@@ -19,8 +19,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use proxspace::download::{self, DownloadError};
-use proxspace::http::{HttpError, UreqClient};
+use proxspace::http::{HttpClient, HttpError, Request, UreqClient};
 use proxspace::logging::Logger;
+use proxspace::msys2;
 use proxspace::ui::{Ui, UiOptions};
 
 /// Body big enough to take several 64 KiB chunks, so a truncated transfer is a
@@ -352,6 +353,81 @@ fn a_second_run_continues_from_where_the_first_stopped() {
     assert_eq!(std::fs::read(&destination).unwrap(), body);
     // The second request asked for exactly the bytes the first one missed.
     assert_eq!(server.ranges(), vec![None, Some(cut as u64)]);
+}
+
+/// The real mirror, on demand.
+///
+/// `MSYS2_URL` answers 302 and sends the client to whichever mirror it picks,
+/// on a different host. Whether a `Range` header survives that hop is the
+/// client's business, not ours, and getting it wrong is invisible — the
+/// download simply starts from zero every time and nobody notices until they
+/// lose a connection at 90%. Hence a test that asks the actual mirror.
+///
+/// ```text
+/// cargo test --test download -- --ignored the_real_mirror
+/// ```
+#[test]
+#[ignore = "talks to mirror.msys2.org"]
+fn the_real_mirror_honours_a_range_request_across_its_redirect() {
+    let client = UreqClient::new();
+
+    let whole = client.send(&Request::get(msys2::MSYS2_URL)).unwrap();
+    let total = whole.body_len.expect("the mirror announced no length");
+    drop(whole);
+
+    let offset = total - 1_000_000;
+    let partial = client
+        .send(&Request::resume_from(msys2::MSYS2_URL, offset))
+        .unwrap();
+
+    assert!(
+        partial.resumed,
+        "the mirror answered 200, not 206: the Range header did not survive the redirect"
+    );
+    assert_eq!(
+        partial.body_len,
+        Some(1_000_000),
+        "206, but for the wrong extent"
+    );
+}
+
+/// The same thing end to end: a `.part` file holding all but the last megabyte
+/// of the real archive, continued over the redirect, and the result checked
+/// against the pinned hash. Costs one megabyte of traffic, not fifty.
+///
+/// ```text
+/// PROXSPACE_TEST_ARCHIVE=/path/to/msys2-base-x86_64-20260611.tar.xz \
+///     cargo test --test download -- --ignored the_real_archive
+/// ```
+#[test]
+#[ignore = "talks to mirror.msys2.org; set PROXSPACE_TEST_ARCHIVE"]
+fn the_real_archive_can_be_finished_from_a_partial_file() {
+    let source = std::env::var("PROXSPACE_TEST_ARCHIVE")
+        .expect("set PROXSPACE_TEST_ARCHIVE to a downloaded msys2 base archive");
+    let complete = std::fs::read(&source).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let destination = dir.path().join(msys2::ArchiveSource::msys2().file_name());
+    // Everything but the tail, exactly as an interrupted download would leave it.
+    let head = complete.len() - 1_000_000;
+    std::fs::write(download::part_path(&destination), &complete[..head]).unwrap();
+
+    let outcome = download::fetch(
+        &UreqClient::new(),
+        &silent_ui(),
+        msys2::MSYS2_URL,
+        &destination,
+        "downloading",
+    )
+    .unwrap();
+
+    assert!(outcome.resumed, "the download started over from zero");
+    assert_eq!(outcome.bytes, complete.len() as u64);
+    // The two halves have to join into the real file, not merely into a file of
+    // the right length.
+    assert_eq!(
+        msys2::sha256_file(&destination).unwrap(),
+        msys2::MSYS2_SHA256
+    );
 }
 
 #[test]
