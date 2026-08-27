@@ -5,16 +5,26 @@
 //! place, because bumping msys2 means editing exactly them (`DECISIONS.md`
 //! §4.1).
 
+pub mod fstab;
+pub mod procs;
+pub mod userdb;
+
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::archive::{self, ExtractError};
+use crate::assets::{self, AssetError};
 use crate::download::{self, DownloadError};
 use crate::http::HttpClient;
+use crate::interrupt::{self, Interrupted};
+use crate::msys2::fstab::FstabError;
+use crate::msys2::procs::ProcsError;
+use crate::msys2::userdb::UserDbError;
 use crate::paths::Paths;
 use crate::state::{Msys2Info, Stage, State, StateError, timestamp};
 use crate::ui::Ui;
@@ -324,6 +334,203 @@ pub fn version_from_url(url: &str) -> Option<&str> {
         .strip_suffix(".tar.xz")?;
     let is_datestamp = version.len() == 8 && version.bytes().all(|byte| byte.is_ascii_digit());
     is_datestamp.then_some(version)
+}
+
+/// Directories msys2 needs but does not create for itself. The base archive
+/// ships without them and `/etc/profile` assumes both are there.
+///
+/// `otp/`, which `setup.cmd` also created, is deliberately not here: nothing in
+/// any script of the original ever refers to it (`ANALYSIS.md` §9).
+const REQUIRED_DIRS: &[&str] = &["tmp", "dev"];
+
+#[derive(Debug, Error)]
+pub enum PrepareError {
+    #[error("`{path}` is not there; msys2 has not been unpacked yet")]
+    TreeMissing { path: PathBuf },
+    #[error("cannot create `{path}`")]
+    CreateDir {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error(transparent)]
+    Assets(#[from] AssetError),
+    #[error(transparent)]
+    Fstab(#[from] FstabError),
+    #[error(transparent)]
+    UserDb(#[from] UserDbError),
+    #[error(transparent)]
+    Interrupted(#[from] Interrupted),
+}
+
+/// Everything [`prepare`] found or changed.
+#[derive(Debug)]
+pub struct Prepared {
+    pub directories: Vec<PathBuf>,
+    pub assets: assets::Report,
+    pub fstab_changed: bool,
+    pub userdb: userdb::Written,
+}
+
+impl Prepared {
+    /// Whether the tree was actually touched. A quiet `false` on every run
+    /// after the first is the point of the whole function.
+    pub fn changed_anything(&self) -> bool {
+        !self.directories.is_empty()
+            || self.assets.changed_anything()
+            || self.fstab_changed
+            || self.userdb.changed
+    }
+}
+
+/// Bring an unpacked msys2 tree to the state ProxSpace expects.
+///
+/// This is `setup/setup.cmd`, minus the parts that turned out to be either
+/// pointless or actively unwanted: no `otp/`, no deleting `/etc/passwd` only to
+/// write the same thing back, and no `rebaseall` — that one now happens only
+/// when asked for (`DECISIONS.md` Q7), because it took a minute off every
+/// single start to fix a problem most installs never have.
+///
+/// Cheap and idempotent by design, so that every command can call it first
+/// without anyone having to reason about whether this particular one needs to.
+/// The way it stays cheap is that each step compares before it writes.
+pub fn prepare(paths: &Paths, ui: &Ui, mounts: &fstab::Mounts) -> Result<Prepared, PrepareError> {
+    let tree = paths.msys2();
+    if !tree.is_dir() {
+        return Err(PrepareError::TreeMissing { path: tree });
+    }
+
+    // Asked before anything is written, because the answer comes from two
+    // external programs and failing after a half-written tree would be worse.
+    let account = userdb::query(&tree)?;
+    prepare_with_account(paths, ui, mounts, &account.passwd, &account.group)
+}
+
+/// The same, for an account already looked up.
+///
+/// Exists so the whole of the provisioning can be exercised on a directory that
+/// only looks like an msys2 tree: `mkpasswd.exe` cannot be faked, and a step
+/// this central should not be testable only on a machine with a real install.
+pub fn prepare_with_account(
+    paths: &Paths,
+    ui: &Ui,
+    mounts: &fstab::Mounts,
+    mkpasswd_output: &str,
+    mkgroup_output: &str,
+) -> Result<Prepared, PrepareError> {
+    let tree = paths.msys2();
+    if !tree.is_dir() {
+        return Err(PrepareError::TreeMissing { path: tree });
+    }
+    interrupt::check()?;
+
+    let mut directories = Vec::new();
+    for name in REQUIRED_DIRS {
+        directories.extend(ensure_dir(&tree.join(name))?);
+    }
+    // $HOME lives outside the tree and is mounted into it; without it the
+    // mount resolves to nothing and the first login lands in `/`.
+    directories.extend(ensure_dir(&mounts.pm3)?);
+    if let Some(builds) = &mounts.builds {
+        directories.extend(ensure_dir(builds)?);
+    }
+    for path in &directories {
+        ui.detail(&format!("created `{}`", path.display()));
+    }
+
+    let assets = assets::install(&tree, ui)?;
+    let fstab_changed = fstab::install(&tree, mounts, ui)?;
+    let userdb = userdb::install_from(&tree, mkpasswd_output, mkgroup_output, ui)?;
+
+    Ok(Prepared {
+        directories,
+        assets,
+        fstab_changed,
+        userdb,
+    })
+}
+
+/// Create a directory, reporting it only if it was not already there.
+fn ensure_dir(path: &Path) -> Result<Option<PathBuf>, PrepareError> {
+    if path.is_dir() {
+        return Ok(None);
+    }
+    fs::create_dir_all(path).map_err(|source| PrepareError::CreateDir {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(Some(path.to_path_buf()))
+}
+
+#[derive(Debug, Error)]
+pub enum RebaseError {
+    #[error("`{path}` is missing; the msys2 tree is incomplete")]
+    ToolMissing { path: PathBuf },
+    #[error("cannot run `{path}`")]
+    Failed {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("rebasing the msys2 DLLs failed ({status})")]
+    Refused { status: String },
+    #[error(transparent)]
+    Procs(#[from] ProcsError),
+}
+
+/// Recompute the load addresses of the msys2 DLLs (`rebaseall`).
+///
+/// Cygwin's `fork()` needs every DLL to land at the same address in the child
+/// as in the parent, and it cannot when two of them want the same range. The
+/// symptom is builds failing at random with "unable to remap" — and nothing
+/// else looks wrong, which is why the original ran this on every single start.
+///
+/// Here it runs only for `repair --rebase` (`DECISIONS.md` Q7). It is slow, it
+/// requires that nothing else in the tree is running, and it fixes a problem
+/// that most installs never have; paying for it on every start to avoid
+/// explaining it once was the wrong trade.
+pub fn rebase(paths: &Paths, ui: &Ui) -> Result<(), RebaseError> {
+    let tree = paths.msys2();
+    let dash = tree.join("usr/bin/dash.exe");
+    if !dash.is_file() {
+        return Err(RebaseError::ToolMissing { path: dash });
+    }
+
+    // rebaseall rewrites the DLLs in place and refuses, or corrupts them, if
+    // anything is using them.
+    procs::stop_holders(&tree, ui)?;
+
+    ui.step("rebasing the msys2 DLLs (this takes a while)");
+    let spinner = ui.spinner("rebasing");
+    let output = Command::new(&dash)
+        .arg("/usr/bin/rebaseall")
+        .arg("-p")
+        .output();
+    spinner.finish_and_clear();
+
+    let output = output.map_err(|source| RebaseError::Failed {
+        path: dash.clone(),
+        source,
+    })?;
+
+    // The command is long and chatty and its output matters only when it goes
+    // wrong, so it goes to the log rather than the screen. Streaming it live is
+    // what `CommandRunner` will be for.
+    for stream in [&output.stdout, &output.stderr] {
+        let text = String::from_utf8_lossy(stream);
+        if !text.trim().is_empty() {
+            ui.logger().write(crate::logging::Level::Info, text.trim());
+        }
+    }
+
+    if !output.status.success() {
+        return Err(RebaseError::Refused {
+            status: output.status.to_string(),
+        });
+    }
+
+    ui.success("msys2 DLLs rebased");
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# ProxSpace command, handed back to proxspace.exe outside the msys2 tree.
+#
+# The old setup/bin scripts did this work in shell; now the binary owns it, and
+# these shims exist so that the familiar names keep working inside the shell.
+# $PROXSPACE_EXE is exported by /etc/post-install/09-proxspace_setup.post.
+if [ -z "$PROXSPACE_EXE" ] || [ ! -f "$PROXSPACE_EXE" ]; then
+    echo "proxspace.exe was not found. This shell was not started by ProxSpace, or the folder it lives in has been moved. Run proxspace.exe again from Windows." >&2
+    exit 1
+fi
+exec "$PROXSPACE_EXE" @COMMAND@

@@ -1,0 +1,3 @@
+# The shell scripts and configs here are read by bash inside msys2:
+# a CRLF ending would become part of the last argument on the line.
+* text eol=lf

@@ -15,6 +15,7 @@
 //! - [`http`] — the only way out to the network
 //! - [`download`] — fetching a file over it, resumably
 //! - [`archive`] — unpacking what was fetched
+//! - [`assets`] — the files ProxSpace puts inside that tree
 //! - [`msys2`] — which msys2 this build installs, and getting it intact
 //! - [`preflight`] — checks run before the environment is touched
 //! - [`state`] — the install pipeline and its persisted state
@@ -24,6 +25,7 @@
 //! - [`cli`] — the command tree
 
 pub mod archive;
+pub mod assets;
 pub mod cli;
 pub mod download;
 pub mod http;

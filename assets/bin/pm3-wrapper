@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Run the proxmark3 script of the same name from the current directory.
+#
+# Installed under every name the proxmark3 client ships (pm3, pm3-flash,
+# pm3-flash-all, pm3-flash-bootrom, pm3-flash-fullimage): all it does is spare
+# the user the leading `./` and say something useful when they are in the wrong
+# directory. Carried over from the original ProxSpace, with the arguments
+# forwarded — the original dropped them, which made `pm3 -p COM3` silently
+# ignore the port.
+FILENAME=$(basename -- "$0")
+if [ -f "$FILENAME" ]; then
+    "./$FILENAME" "$@"
+else
+    echo "The $FILENAME script does not exist in the current directory. Make sure you are in the Proxmark source directory."
+    exit 1
+fi

@@ -1,0 +1,30 @@
+# ProxSpace environment, sourced by /etc/profile in every login shell.
+#
+# Unlike the original 09-proxspace_setup.post, this file only sets up the
+# environment. Every decision about installing, reinstalling or repairing the
+# toolchain is made by proxspace.exe before the shell is ever started, so none
+# of it can run here half-way through a login and leave the shell in a state
+# nobody chose.
+
+export PSVERSION="@PSVERSION@"
+export LANG=en_US.UTF-8
+export PS1='\[\033]0;ProxSpace v$PSVERSION - $MSYSTEM:\w\007\033[32m\]pm3 \[\033[33m\]\w\[\033[0m\]$ '
+export PATH=/opt/proxspace/bin:$PATH
+
+# The toolchain is the UCRT64 one, so python lives there too. Guarded by
+# $MSYSTEM because an MSYS or CLANG64 shell has a different prefix and pointing
+# python at the wrong one breaks it outright.
+if [ "$MSYSTEM" = "UCRT64" ]; then
+    export PYTHONHOME=/ucrt64
+fi
+
+# Where proxspace.exe is: one level above the msys2 tree, always, because the
+# tree is unpacked next to the binary. Derived at login rather than baked in at
+# install time, so moving the whole folder needs no regeneration. `cygpath -w /`
+# gives the tree in Windows form, the round trip back to POSIX resolves it
+# through the current mount table, and its parent is the install directory.
+if [ -z "$PROXSPACE_EXE" ]; then
+    export PROXSPACE_EXE="$(dirname "$(cygpath -u "$(cygpath -w /)")")/proxspace.exe"
+fi
+
+alias ls='ls -hF --color=auto'

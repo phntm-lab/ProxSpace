@@ -1,0 +1,42 @@
+##############################
+#         General            #
+##############################
+git
+make
+pkgconf
+mingw-w64-ucrt-x86_64-cmake
+procps-ng
+base-devel
+##############################
+#         Proxmark3          #
+##############################
+mingw-w64-ucrt-x86_64-gcc
+mingw-w64-ucrt-x86_64-arm-none-eabi-gcc
+mingw-w64-ucrt-x86_64-gdb-multiarch
+https://repo.msys2.org/mingw/ucrt64/mingw-w64-ucrt-x86_64-arm-none-eabi-binutils-2.46.1-1-any.pkg.tar.zst
+mingw-w64-ucrt-x86_64-arm-none-eabi-newlib
+mingw-w64-ucrt-x86_64-readline
+mingw-w64-ucrt-x86_64-libsndfile
+mingw-w64-ucrt-x86_64-lua
+mingw-w64-ucrt-x86_64-bzip2
+mingw-w64-ucrt-x86_64-python
+mingw-w64-ucrt-x86_64-python-pip
+mingw-w64-ucrt-x86_64-python-setuptools
+mingw-w64-ucrt-x86_64-python-cryptography
+mingw-w64-ucrt-x86_64-jansson
+mingw-w64-ucrt-x86_64-qt6-base
+mingw-w64-ucrt-x86_64-gdb
+mingw-w64-ucrt-x86_64-openocd
+mingw-w64-ucrt-x86_64-opencl-icd
+mingw-w64-ucrt-x86_64-lz4
+mingw-w64-ucrt-x86_64-libgd
+mingw-w64-ucrt-x86_64-openssl
+##############################
+#         ChameleonMini      #
+##############################
+#mingw-w64-ucrt-x86_64-dfu-programmer
+#mingw-w64-ucrt-x86_64-avrdude
+#mingw-w64-ucrt-x86_64-avr-binutils
+#mingw-w64-ucrt-x86_64-avr-gcc
+#mingw-w64-ucrt-x86_64-avr-gdb
+#mingw-w64-ucrt-x86_64-avr-libc
