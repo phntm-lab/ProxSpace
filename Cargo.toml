@@ -15,13 +15,19 @@ dialoguer = { version = "0.12.0", default-features = false }
 indicatif = "0.18.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+sha2 = "0.11.0"
+tar = "0.4.46"
 thiserror = "2.0.20"
 time = { version = "0.3.55", features = ["formatting", "parsing"] }
+ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
+xz2 = "0.1.7"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
+tar = "0.4.46"
 tempfile = "3.27.0"
+xz2 = "0.1.7"
 
 [profile.release]
 lto = "thin"

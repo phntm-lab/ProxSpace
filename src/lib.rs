@@ -12,6 +12,10 @@
 //! Module map:
 //!
 //! - [`paths`] — where everything is on disk (always next to the executable)
+//! - [`http`] — the only way out to the network
+//! - [`download`] — fetching a file over it, resumably
+//! - [`archive`] — unpacking what was fetched
+//! - [`msys2`] — which msys2 this build installs, and getting it intact
 //! - [`preflight`] — checks run before the environment is touched
 //! - [`state`] — the install pipeline and its persisted state
 //! - [`ui`] — every message the user sees
@@ -19,9 +23,13 @@
 //! - [`interrupt`] — Ctrl+C handling for long operations
 //! - [`cli`] — the command tree
 
+pub mod archive;
 pub mod cli;
+pub mod download;
+pub mod http;
 pub mod interrupt;
 pub mod logging;
+pub mod msys2;
 pub mod paths;
 pub mod preflight;
 pub mod state;

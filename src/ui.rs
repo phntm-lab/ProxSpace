@@ -167,6 +167,61 @@ impl Ui {
         bar
     }
 
+    /// Progress bar over a transfer measured in bytes.
+    ///
+    /// Separate from [`Ui::progress`] because a raw `12345678/98765432` is
+    /// unreadable for a download: this one formats sizes and shows the rate,
+    /// which is what tells the user whether the transfer is alive. A server
+    /// that does not announce a size gets a spinner instead of a bar with a
+    /// made-up total.
+    pub fn progress_bytes(&self, total: Option<u64>, message: &str) -> ProgressBar {
+        if self.options.quiet {
+            return ProgressBar::hidden();
+        }
+        let (bar, template) = match total {
+            Some(total) => (
+                ProgressBar::new(total),
+                "    {msg} [{bar:32}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+            ),
+            None => (
+                ProgressBar::new_spinner(),
+                "    {spinner} {msg} {bytes} ({bytes_per_sec})",
+            ),
+        };
+        bar.set_style(
+            ProgressStyle::with_template(template)
+                .unwrap_or_else(|_| ProgressStyle::default_bar())
+                .progress_chars("=> "),
+        );
+        bar.set_message(message.to_string());
+        bar
+    }
+
+    /// Progress over a number of things — files unpacked, packages installed.
+    ///
+    /// The total is optional because some of that work cannot be counted in
+    /// advance: the entries in a compressed archive are only known once it has
+    /// been read, and reading it twice to draw a nicer bar is not a trade worth
+    /// making. Without a total the user gets a running count instead.
+    pub fn progress_items(&self, total: Option<u64>, message: &str) -> ProgressBar {
+        match total {
+            Some(total) => self.progress(total, message),
+            None => {
+                if self.options.quiet {
+                    return ProgressBar::hidden();
+                }
+                let bar = ProgressBar::new_spinner();
+                bar.set_style(
+                    ProgressStyle::with_template("    {spinner} {msg} {pos}")
+                        .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+                );
+                bar.set_message(message.to_string());
+                bar.enable_steady_tick(std::time::Duration::from_millis(120));
+                bar
+            }
+        }
+    }
+
     /// Spinner for work whose size is not known in advance.
     pub fn spinner(&self, message: &str) -> ProgressBar {
         if self.options.quiet {
