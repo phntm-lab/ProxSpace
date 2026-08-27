@@ -21,7 +21,10 @@
 //! - [`pacman`] — installing that set, and the pin that survives an upgrade
 //! - [`msys2`] — which msys2 this build installs, and getting it intact
 //! - [`preflight`] — checks run before the environment is touched
+//! - [`mirrors`] — which servers pacman downloads from, and in what order
 //! - [`install`] — the pipeline that puts all of it together
+//! - [`clean`] — undoing that, without touching anything the user made
+//! - [`info`] — what the finished environment turned out to be
 //! - [`state`] — the install pipeline and its persisted state
 //! - [`ui`] — every message the user sees
 //! - [`logging`] — the log file those messages are mirrored to
@@ -30,13 +33,16 @@
 
 pub mod archive;
 pub mod assets;
+pub mod clean;
 pub mod cli;
 pub mod command;
 pub mod download;
 pub mod http;
+pub mod info;
 pub mod install;
 pub mod interrupt;
 pub mod logging;
+pub mod mirrors;
 pub mod msys2;
 pub mod packages;
 pub mod pacman;

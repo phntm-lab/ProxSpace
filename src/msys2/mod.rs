@@ -6,6 +6,7 @@
 
 pub mod fstab;
 pub mod procs;
+pub mod shell;
 pub mod userdb;
 
 use std::ffi::OsString;

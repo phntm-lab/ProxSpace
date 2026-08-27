@@ -8,16 +8,20 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use proxspace::cli::{Cli, Command, EXIT_NOT_IMPLEMENTED};
+use proxspace::clean::{self, Scope};
+use proxspace::cli::{Cli, Command, EXIT_NOT_IMPLEMENTED, MirrorsAction};
 use proxspace::command::ProcessRunner;
 use proxspace::http::UreqClient;
+use proxspace::info;
 use proxspace::install::{self, Plan};
 use proxspace::interrupt::{self, EXIT_INTERRUPTED};
 use proxspace::logging::{Level, Logger};
+use proxspace::mirrors;
+use proxspace::msys2::shell;
 use proxspace::paths::Paths;
 use proxspace::preflight;
 use proxspace::state::State;
-use proxspace::ui::{Ui, UiOptions};
+use proxspace::ui::{self, Ui, UiOptions};
 
 fn main() -> ExitCode {
     // `Cli::parse` exits by itself on `--help`, `--version` and usage errors,
@@ -29,6 +33,9 @@ fn main() -> ExitCode {
         Ok(code) => code,
         Err(error) => {
             report(&logger, &error);
+            // Double-clicked from Explorer, the console goes with us; without
+            // this the message above would never be read.
+            ui::hold_window_open();
             1
         }
     };
@@ -100,47 +107,94 @@ fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
     dispatch(&command, &ui, &paths, &mut state)
 }
 
+/// How far [`ensure_environment`] got.
+enum Ready {
+    Yes,
+    /// Stopped by Ctrl+C. Not an error: the state file records what did finish,
+    /// and the next run carries on from there.
+    Interrupted,
+}
+
+/// Bring the environment to the point where it can be used.
+///
+/// Shared by `install` and `shell` because they differ only in what happens
+/// afterwards — the automaton that gets there is the same one, and running it
+/// before the shell is what removes the two-launch dance of `runme64.bat`.
+fn ensure_environment(ui: &Ui, paths: &Paths, state: &mut State, force: bool) -> Result<Ready> {
+    let plan = Plan::shipped(paths)?.forced(force);
+    match install::ensure_ready(&UreqClient::new(), &ProcessRunner, ui, paths, state, &plan) {
+        Ok(()) => Ok(Ready::Yes),
+        // Ctrl+C surfaces as whichever step noticed it first; the state file
+        // already says how far the install got.
+        Err(error) if interrupt::requested() => {
+            ui.detail(&format!("stopped: {error}"));
+            Ok(Ready::Interrupted)
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Result<i32> {
     match command {
-        // `info` is the one command that can already say something useful, and
-        // the one that has to keep working on a broken install.
+        // The one command that has to keep working on a broken install, which
+        // is why it neither runs preflight nor brings the environment up.
         Command::Info => {
-            ui.output(&format!("proxspace  {}", proxspace::VERSION));
-            ui.output(&format!("base       {}", paths.base().display()));
-            ui.output(&format!("msys2      {}", paths.msys2().display()));
-            ui.output(&format!("home       {}", paths.pm3().display()));
-            ui.output(&format!("state      {}", state.stage));
-            match &state.msys2 {
-                Some(info) => ui.output(&format!(
-                    "msys2 base {} (extracted {})",
-                    info.version, info.extracted_at
-                )),
-                None => ui.output("msys2 base not installed"),
-            }
-            if state.was_moved_from(paths.base()) {
-                ui.output(&format!(
-                    "moved      from {}",
-                    state.install_path.as_deref().unwrap_or("?")
-                ));
-            }
-            ui.output(&format!("log        {}", ui.logger().path().display()));
+            info::run(&ProcessRunner, ui, paths, state);
             Ok(0)
         }
 
-        Command::Install { force } => {
-            let plan = Plan::shipped(paths)?.forced(*force);
-            match install::ensure_ready(&UreqClient::new(), &ProcessRunner, ui, paths, state, &plan)
-            {
-                Ok(()) => Ok(0),
-                // Ctrl+C surfaces as whichever step noticed it first; the
-                // state file already says how far the install got.
-                Err(error) if interrupt::requested() => {
-                    ui.detail(&format!("stopped: {error}"));
-                    Ok(EXIT_INTERRUPTED)
-                }
-                Err(error) => Err(error.into()),
+        Command::Install { force } => match ensure_environment(ui, paths, state, *force)? {
+            Ready::Yes => Ok(0),
+            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
+        },
+
+        // The `runme64.bat` case, and the reason the whole install pipeline is
+        // resumable: whatever is left to do is done first, then the user gets
+        // the shell they asked for. There is no second run of anything.
+        Command::Shell { args } => match ensure_environment(ui, paths, state, false)? {
+            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
+            Ready::Yes => {
+                ui.detail("starting the login shell");
+                // Its exit code becomes ours: `shell -- -c "make"` is then
+                // usable from a script.
+                Ok(shell::run(paths, args)?)
             }
+        },
+
+        // The scriptable form of the above. It brings the environment up too:
+        // a command that needs the toolchain needs it installed, and choosing
+        // otherwise would mean an `exec` that fails differently depending on
+        // what the user happened to have run before.
+        Command::Exec { command } => match ensure_environment(ui, paths, state, false)? {
+            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
+            Ready::Yes => Ok(shell::exec(paths, command)?),
+        },
+        // Not part of the install automaton: the tree is already there and
+        // wrong, so the pipeline that decides what is missing is exactly the
+        // wrong tool. Everything installed goes back over itself instead.
+        Command::Repair { rebase } => {
+            install::repair(&ProcessRunner, ui, paths, &Plan::shipped(paths)?, *rebase)?;
+            Ok(0)
         }
+
+        // Neither half needs the environment brought up: a tree whose mirrors
+        // are wrong is one that cannot finish an install in the first place.
+        Command::Mirrors { action } => {
+            match action {
+                MirrorsAction::Rank => mirrors::rank(&ProcessRunner, ui, paths)?,
+                MirrorsAction::Restore => mirrors::restore(ui, paths)?,
+            }
+            Ok(0)
+        }
+
+        // `--cache` is the default: it is the one that frees gigabytes without
+        // costing anything but a slower reinstall.
+        Command::Clean { all, .. } => {
+            let scope = if *all { Scope::All } else { Scope::Cache };
+            clean::run(&ProcessRunner, ui, paths, state, scope)?;
+            Ok(0)
+        }
+
         other => {
             if interrupt::requested() {
                 return Ok(EXIT_INTERRUPTED);

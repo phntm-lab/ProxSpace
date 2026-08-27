@@ -20,6 +20,7 @@ use crate::logging::{Level, Logger};
 pub const EXIT_INTERRUPTED: i32 = 130;
 
 static REQUESTED: AtomicBool = AtomicBool::new(false);
+static PAUSED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Error)]
 #[error("interrupted by Ctrl+C")]
@@ -29,6 +30,12 @@ pub struct Interrupted;
 /// default behaviour of killing the process, which is worse but still works.
 pub fn install(logger: Arc<Logger>) -> Result<(), ctrlc::Error> {
     ctrlc::set_handler(move || {
+        // On Windows every process attached to the console is signalled, so a
+        // Ctrl+C aimed at a child arrives here as well. While one owns the
+        // console the keypress is not ours to act on.
+        if PAUSED.load(Ordering::SeqCst) {
+            return;
+        }
         if REQUESTED.swap(true, Ordering::SeqCst) {
             logger.write(Level::Warn, "second Ctrl+C, exiting immediately");
             std::process::exit(EXIT_INTERRUPTED);
@@ -40,6 +47,27 @@ pub fn install(logger: Arc<Logger>) -> Result<(), ctrlc::Error> {
 
 pub fn requested() -> bool {
     REQUESTED.load(Ordering::SeqCst)
+}
+
+/// Ctrl+C is being ignored for as long as this lives.
+#[derive(Debug)]
+pub struct Paused(());
+
+impl Drop for Paused {
+    fn drop(&mut self) {
+        PAUSED.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Hand Ctrl+C over to an interactive child process.
+///
+/// The shell reads the keypress as its own — it is how a user stops a build
+/// they just started — and a second one is not a demand that ProxSpace quit.
+/// Without this the handler would print over the session and arm the
+/// immediate-exit path, taking the shell down with it on the next press.
+pub fn pause() -> Paused {
+    PAUSED.store(true, Ordering::SeqCst);
+    Paused(())
 }
 
 /// Checkpoint for long operations: call between units of work.
@@ -61,5 +89,15 @@ mod tests {
         // this binary raises it.
         assert!(!requested());
         assert!(check().is_ok());
+    }
+
+    #[test]
+    fn pausing_lasts_exactly_as_long_as_the_guard() {
+        assert!(!PAUSED.load(Ordering::SeqCst));
+        {
+            let _paused = pause();
+            assert!(PAUSED.load(Ordering::SeqCst));
+        }
+        assert!(!PAUSED.load(Ordering::SeqCst));
     }
 }

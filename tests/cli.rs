@@ -79,7 +79,23 @@ fn info_works_on_an_empty_directory() {
         .assert()
         .success()
         .stdout(predicate::str::contains("proxspace"))
-        .stdout(predicate::str::contains("msys2 base not installed"));
+        .stdout(predicate::str::contains("version"))
+        // Nothing is installed and every section says so rather than failing.
+        .stdout(predicate::str::contains("not installed"))
+        .stdout(predicate::str::contains("toolchain"))
+        .stdout(predicate::str::contains("system"));
+}
+
+/// The report is meant to be attached to a bug report, so it has to exist as a
+/// file and hold the same text that was printed.
+#[test]
+fn info_leaves_its_report_next_to_the_binary() {
+    let dir = base();
+    let printed = in_dir(dir.path()).arg("info").assert().success();
+    let printed = String::from_utf8(printed.get_output().stdout.clone()).unwrap();
+
+    let written = fs::read_to_string(dir.path().join("proxspace-info.txt")).unwrap();
+    assert_eq!(written, printed);
 }
 
 #[test]
@@ -94,24 +110,28 @@ fn every_run_writes_a_log() {
 #[test]
 fn unimplemented_commands_say_so_and_use_their_own_exit_code() {
     let dir = base();
-    // `install` is not among these any more: it does the real thing, and what
+    // Only `autobuild` is left: everything else does the real thing, and what
     // it does is checked against a fake environment in `install_flow.rs`.
-    for command in ["shell", "repair", "autobuild"] {
-        in_dir(dir.path())
-            .arg(command)
-            .assert()
-            .code(EXIT_NOT_IMPLEMENTED)
-            .stderr(predicate::str::contains("not implemented yet"));
-    }
-}
-
-#[test]
-fn no_arguments_means_shell() {
-    let dir = base();
     in_dir(dir.path())
+        .arg("autobuild")
         .assert()
         .code(EXIT_NOT_IMPLEMENTED)
-        .stderr(predicate::str::contains("`shell` is not implemented yet"));
+        .stderr(predicate::str::contains("not implemented yet"));
+}
+
+/// A run with no arguments is the `runme64.bat` case and must dispatch to
+/// `shell`. Checked on a path the environment cannot use, so that the run stops
+/// at preflight instead of going on to provision an msys2 tree.
+#[test]
+fn no_arguments_means_shell() {
+    let parent = base();
+    let spaced = parent.path().join("Program Files");
+    fs::create_dir(&spaced).unwrap();
+
+    in_dir(&spaced).assert().code(1);
+
+    let log = fs::read_to_string(spaced.join("proxspace.log")).unwrap();
+    assert!(log.contains("starting: shell"), "unexpected log: {log}");
 }
 
 #[test]
@@ -211,4 +231,42 @@ fn global_flags_are_accepted_after_the_subcommand() {
         .assert()
         .success()
         .stdout(predicate::str::contains("base directory:"));
+}
+
+/// A repair has nothing to work on until msys2 is unpacked, and must say which
+/// directory it was looking for rather than failing somewhere inside pacman.
+#[test]
+fn repairing_an_empty_directory_says_the_tree_is_not_there() {
+    let dir = base();
+    in_dir(dir.path())
+        .arg("repair")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("has not been unpacked"));
+}
+
+/// `clean` with nothing installed must say so rather than reporting a failure
+/// from inside pacman.
+#[test]
+fn cleaning_an_empty_directory_says_there_is_nothing_to_clean() {
+    let dir = base();
+    in_dir(dir.path())
+        .arg("clean")
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("nothing to clean"));
+}
+
+/// Both halves of `mirrors` reach their command rather than falling through to
+/// the not-implemented branch.
+#[test]
+fn mirror_commands_need_an_unpacked_tree() {
+    let dir = base();
+    for action in ["rank", "restore"] {
+        in_dir(dir.path())
+            .args(["mirrors", action])
+            .assert()
+            .code(1)
+            .stderr(predicate::str::contains("has not been unpacked"));
+    }
 }

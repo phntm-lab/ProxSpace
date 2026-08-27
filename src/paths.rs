@@ -16,6 +16,8 @@ pub const BUILDS_DIR: &str = "builds";
 pub const STATE_FILE: &str = "proxspace.state.json";
 pub const LOG_FILE: &str = "proxspace.log";
 pub const LOG_BACKUP_FILE: &str = "proxspace.log.old";
+/// Where `info` leaves a copy of its report.
+pub const INFO_FILE: &str = "proxspace-info.txt";
 
 /// Prefix Windows puts on canonicalised paths to lift the 260-character limit.
 const EXTENDED_PREFIX: &str = r"\\?\";
@@ -108,6 +110,12 @@ impl Paths {
     pub fn log_backup_file(&self) -> PathBuf {
         self.base.join(LOG_BACKUP_FILE)
     }
+
+    /// The report `info` writes, so that it can be attached to a bug report
+    /// rather than copied out of a console.
+    pub fn info_file(&self) -> PathBuf {
+        self.base.join(INFO_FILE)
+    }
 }
 
 /// Make a path absolute, and canonical when the target exists.
@@ -171,6 +179,10 @@ mod tests {
         assert_eq!(
             paths.log_backup_file(),
             PathBuf::from(r"C:\ProxSpace\proxspace.log.old")
+        );
+        assert_eq!(
+            paths.info_file(),
+            PathBuf::from(r"C:\ProxSpace\proxspace-info.txt")
         );
     }
 

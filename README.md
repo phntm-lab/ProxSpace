@@ -9,9 +9,9 @@ into a shell.
 
 ## Status
 
-Early work in progress. The command tree, paths, install state, preflight
-checks and logging are in place; provisioning msys2 is not implemented yet.
-Commands that are not built yet say so and exit with code 3.
+Work in progress. Provisioning, the shell, `exec`, `repair`, `info`, `mirrors`
+and `clean` all work; none of it has been run against a real msys2 tree yet.
+`update` and `autobuild` are not built: they say so and exit with code 3.
 
 ## What it is not
 
@@ -30,6 +30,7 @@ Everything lives next to the executable — nothing is written to `%APPDATA%`,
 ├── pm3/                    your home directory inside the shell; Proxmark3 sources
 ├── builds/                 output of `proxspace autobuild`
 ├── proxspace.state.json    what has been installed so far
+├── proxspace-info.txt      the last report from `proxspace info`
 └── proxspace.log           what happened, including external command output
 ```
 

@@ -32,17 +32,14 @@ use thiserror::Error;
 use crate::command::{Cmd, CommandError, CommandRunner};
 use crate::http::HttpClient;
 use crate::interrupt::Interrupted;
-use crate::msys2::{self, ArchiveSource, Msys2Error, PrepareError, fstab};
+use crate::msys2::shell::BASH;
+use crate::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
 use crate::packages::{PackageList, PackagesError, PkgSpec};
 use crate::pacman::{Mode, Pacman, PacmanError};
 use crate::paths::Paths;
 use crate::state::{PackagesInfo, Stage, State, StateError, timestamp};
 use crate::ui::Ui;
 
-/// Where the login shell lives. Started directly, not through
-/// `msys2_shell.cmd`, which is a batch file that exists to work out what this
-/// program already knows.
-const BASH: &str = "usr/bin/bash.exe";
 /// The UCRT64 python, which is the one the proxmark3 client runs under.
 const PYTHON: &str = "ucrt64/bin/python.exe";
 
@@ -63,6 +60,8 @@ pub enum InstallError {
     Packages(#[from] PackagesError),
     #[error(transparent)]
     State(#[from] StateError),
+    #[error(transparent)]
+    Rebase(#[from] RebaseError),
     #[error(transparent)]
     Interrupted(#[from] Interrupted),
     #[error("`{path}` is not there; the msys2 tree is incomplete")]
@@ -181,6 +180,108 @@ pub fn ensure_ready(
     install_packages(&env, state, &plan.list, plan.force || moved)?;
     finish(&env, state)?;
     Ok(())
+}
+
+/// The most characters put on one `pacman -S` command line.
+///
+/// Windows refuses to start a process whose whole command line runs past 32767
+/// characters, and a repair names every package in the tree — several hundred
+/// of them once the toolchain and its dependencies are in. The budget leaves
+/// room for the path to pacman and its flags.
+const MAX_COMMAND_LINE: usize = 24_000;
+
+/// Reinstall every installed package on top of itself.
+///
+/// This is `ps-repair`, and it exists for a tree whose files are wrong in ways
+/// nothing can work out from the outside: a half-written package after a power
+/// cut, files an antivirus quarantined, a `.dll` truncated by a full disk.
+/// pacman is told to overwrite whatever it finds, so every file in the tree
+/// goes back to what the package says it should be.
+///
+/// Two differences from the original loop of one `pacman -S` per package. The
+/// packages go in as few transactions rather than several hundred, which turns
+/// half an hour into minutes. And the pinned package is left out of them and
+/// reinstalled from its URL instead: named on a `-S` command line it would
+/// either be refused because of the pin in `pacman.conf` or, if the pin had
+/// gone missing, quietly replaced by a newer version — and a newer
+/// `arm-none-eabi-binutils` is exactly the breakage the pin is there to
+/// prevent.
+pub fn repair(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    paths: &Paths,
+    plan: &Plan,
+    rebase: bool,
+) -> Result<(), InstallError> {
+    let env = Env {
+        runner,
+        ui,
+        paths,
+        pacman: Pacman::new(&paths.msys2()),
+    };
+
+    // Cheap, idempotent, and it repairs the breakages that are not about
+    // package files at all: an `/etc/fstab` left behind by a moved folder, an
+    // account file written for a Windows user that no longer exists.
+    let prepared = msys2::prepare(runner, ui, paths, &plan.mounts)?;
+    if prepared.changed_anything() {
+        ui.info("the msys2 tree was brought up to date with this ProxSpace");
+    }
+
+    let installed = env.pacman.query_installed(runner, ui)?;
+    let held = env.pacman.ignored().unwrap_or_default();
+    let names: Vec<&str> = installed
+        .names()
+        .filter(|name| !held.iter().any(|pinned| pinned == name))
+        .collect();
+
+    if names.is_empty() {
+        ui.warn("no packages are installed in this tree; there is nothing to reinstall");
+    } else {
+        ui.step(&format!("reinstalling {}", describe(&names)));
+        let batches = batches(&names);
+        for (index, batch) in batches.iter().enumerate() {
+            if batches.len() > 1 {
+                ui.info(&format!("batch {} of {}", index + 1, batches.len()));
+            }
+            env.pacman.install(runner, ui, batch, Mode::Reinstall)?;
+        }
+    }
+
+    let pins: Vec<&PkgSpec> = plan.list.pinned().collect();
+    install_pins(&env, &pins)?;
+    write_pin_block(&env, &plan.list)?;
+    verify_pins(&env, &plan.list)?;
+
+    if rebase {
+        msys2::rebase(runner, ui, paths)?;
+    }
+
+    ui.success("the environment has been reinstalled over itself");
+    Ok(())
+}
+
+/// Split package names into command lines short enough for Windows to start.
+fn batches<'a>(names: &[&'a str]) -> Vec<Vec<&'a str>> {
+    let mut batches: Vec<Vec<&str>> = Vec::new();
+    let mut length = 0;
+
+    for name in names {
+        // The separating space is what makes this the length of the line
+        // rather than of the names.
+        let cost = name.len() + 1;
+        match batches.last_mut() {
+            Some(batch) if length + cost <= MAX_COMMAND_LINE => {
+                batch.push(name);
+                length += cost;
+            }
+            _ => {
+                batches.push(vec![name]);
+                length = cost;
+            }
+        }
+    }
+    batches
 }
 
 /// Notice that the whole installation has been moved or copied elsewhere, and
@@ -543,6 +644,40 @@ pub fn is_ready(paths: &Paths, state: &State) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The command line one batch would become, near enough: the names and the
+    /// spaces between them.
+    fn line_length(batch: &[&str]) -> usize {
+        batch.iter().map(|name| name.len() + 1).sum()
+    }
+
+    #[test]
+    fn a_short_list_is_one_command_line() {
+        let names = ["git", "make", "python"];
+        assert_eq!(batches(&names), vec![vec!["git", "make", "python"]]);
+        assert!(batches(&[]).is_empty());
+    }
+
+    /// A finished tree holds several hundred packages, and naming them all at
+    /// once would build a command line Windows refuses to start.
+    #[test]
+    fn a_whole_tree_is_split_into_command_lines_windows_will_start() {
+        let owned: Vec<String> = (0..2000)
+            .map(|number| format!("mingw-w64-ucrt-x86_64-package-{number:04}"))
+            .collect();
+        let names: Vec<&str> = owned.iter().map(String::as_str).collect();
+
+        let batches = batches(&names);
+
+        assert!(batches.len() > 1, "2000 packages must not be one line");
+        for batch in &batches {
+            assert!(!batch.is_empty());
+            assert!(line_length(batch) <= MAX_COMMAND_LINE);
+        }
+        // Splitting must not lose or reorder anything.
+        let rejoined: Vec<&str> = batches.concat();
+        assert_eq!(rejoined, names);
+    }
 
     /// A finished installation built from `hash`.
     fn ready_with(hash: &str) -> State {

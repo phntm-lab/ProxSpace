@@ -548,3 +548,73 @@ fn an_incomplete_tree_says_which_program_is_missing() {
     // Everything before the python step still counts as done.
     assert_eq!(state.stage, Stage::PackagesInstalled);
 }
+
+#[test]
+fn a_repair_puts_every_installed_package_back_over_itself() {
+    let (_dir, paths, mut state) = unpacked();
+    let fake = Fake::default();
+    run(&fake, &paths, &mut state, false).unwrap();
+    let before = fake.calls().len();
+
+    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+
+    let calls = fake.calls();
+    let during = &calls[before..];
+    assert!(
+        during.iter().any(|call| call == "pacman -S git make"),
+        "got: {during:?}"
+    );
+    // The pin is never named on a `-S` line: pacman would either refuse it
+    // because of `IgnorePkg` or hand back a newer version than the pin.
+    assert!(
+        !during
+            .iter()
+            .any(|call| call.starts_with("pacman -S") && call.contains(PIN_NAME)),
+        "got: {during:?}"
+    );
+    // It comes back from its URL instead, at the version the list demands.
+    assert!(
+        during
+            .iter()
+            .any(|call| call == &format!("pacman -U {PIN_FILE}")),
+        "got: {during:?}"
+    );
+    assert_eq!(fake.version_of(PIN_NAME).as_deref(), Some("2.46.1-1"));
+}
+
+#[test]
+fn a_repair_of_an_empty_tree_asks_pacman_to_install_nothing() {
+    let (_dir, paths, _state) = unpacked();
+    let fake = Fake::default();
+
+    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+
+    assert!(
+        !fake
+            .calls()
+            .iter()
+            .any(|call| call.starts_with("pacman -S ")),
+        "got: {:?}",
+        fake.calls()
+    );
+}
+
+/// Rebasing takes minutes and is the reason it was taken out of every start; it
+/// must happen when it is asked for and never otherwise.
+#[test]
+fn the_dlls_are_rebased_only_when_asked() {
+    let (_dir, paths, mut state) = unpacked();
+    let fake = Fake::default();
+    run(&fake, &paths, &mut state, false).unwrap();
+    fs::write(
+        paths.msys2().join("usr/bin/dash.exe"),
+        b"not really a program",
+    )
+    .unwrap();
+
+    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+    assert!(!fake.ran("rebaseall"));
+
+    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), true).unwrap();
+    assert!(fake.ran("rebaseall"), "got: {:?}", fake.calls());
+}

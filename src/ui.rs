@@ -259,6 +259,57 @@ impl Ui {
     }
 }
 
+/// Program that started this one when it was double-clicked in Explorer.
+const EXPLORER: &str = "explorer.exe";
+
+/// Whether this process was started from Explorer rather than from a console.
+///
+/// It matters because of what happens to the window: Explorer makes a console
+/// for us and closes it the instant we exit, so an error message written just
+/// before returning is on screen for a few milliseconds and gone. Started from
+/// `cmd` or PowerShell the window belongs to the shell and survives, and
+/// stopping to ask for a keypress there would only be in the way.
+///
+/// The parent process is what distinguishes the two, and it is read rather than
+/// guessed at from the environment: `%PROMPT%` and friends say which shell set
+/// them up, not who started this program.
+pub fn launched_from_explorer() -> bool {
+    parent_process_name().is_some_and(|name| name.eq_ignore_ascii_case(EXPLORER))
+}
+
+fn parent_process_name() -> Option<String> {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+
+    // Two targeted refreshes rather than one over everything: this runs on the
+    // way out of a failed run, and enumerating every process on the machine to
+    // read one name would be the slowest part of it.
+    let mut system = System::new();
+    let me = Pid::from_u32(std::process::id());
+    system.refresh_processes(ProcessesToUpdate::Some(&[me]), true);
+    let parent = system.process(me)?.parent()?;
+    system.refresh_processes(ProcessesToUpdate::Some(&[parent]), true);
+    Some(
+        system
+            .process(parent)?
+            .name()
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+/// Keep an Explorer-made console window open until the user has read it.
+///
+/// Does nothing anywhere else, so it is safe to call on every failing path.
+pub fn hold_window_open() {
+    if !launched_from_explorer() {
+        return;
+    }
+    eprintln!("\npress Enter to close this window");
+    let mut line = String::new();
+    // Nothing to do about a failure here: the window is closing either way.
+    let _ = std::io::stdin().read_line(&mut line);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,6 +338,15 @@ mod tests {
             ui.confirm("delete everything?", false),
             Err(UiError::NotInteractive { .. })
         ));
+    }
+
+    /// The lookup itself, since everything that depends on it is a no-op when
+    /// it returns nothing. A test harness is started by cargo, not Explorer.
+    #[test]
+    fn the_parent_process_is_read_and_is_not_explorer() {
+        let name = parent_process_name().expect("this process was started by something");
+        assert!(!name.is_empty());
+        assert!(!launched_from_explorer(), "parent was {name}");
     }
 
     #[test]
