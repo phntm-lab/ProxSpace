@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use proxspace::command::ProcessRunner;
 use proxspace::logging::Logger;
 use proxspace::msys2::fstab::Mounts;
 use proxspace::msys2::{self, PrepareError};
@@ -41,7 +42,7 @@ fn unpacked() -> (tempfile::TempDir, Paths) {
 }
 
 fn prepare(paths: &Paths, mounts: &Mounts) -> Result<msys2::Prepared, PrepareError> {
-    msys2::prepare_with_account(paths, &silent_ui(), mounts, MKPASSWD, MKGROUP)
+    msys2::prepare_with_account(&silent_ui(), paths, mounts, MKPASSWD, MKGROUP)
 }
 
 fn read(path: &Path) -> String {
@@ -179,7 +180,13 @@ fn preparing_a_tree_without_the_account_tools_names_the_missing_one() {
     // tree must fail before anything is written rather than halfway through.
     let (_dir, paths) = unpacked();
 
-    let error = msys2::prepare(&paths, &silent_ui(), &Mounts::for_paths(&paths)).unwrap_err();
+    let error = msys2::prepare(
+        &ProcessRunner,
+        &silent_ui(),
+        &paths,
+        &Mounts::for_paths(&paths),
+    )
+    .unwrap_err();
 
     assert!(matches!(error, PrepareError::UserDb(_)));
     assert!(error.to_string().contains("mkpasswd.exe"));

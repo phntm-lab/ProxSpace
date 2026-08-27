@@ -94,7 +94,9 @@ fn every_run_writes_a_log() {
 #[test]
 fn unimplemented_commands_say_so_and_use_their_own_exit_code() {
     let dir = base();
-    for command in ["shell", "install", "repair", "autobuild"] {
+    // `install` is not among these any more: it does the real thing, and what
+    // it does is checked against a fake environment in `install_flow.rs`.
+    for command in ["shell", "repair", "autobuild"] {
         in_dir(dir.path())
             .arg(command)
             .assert()

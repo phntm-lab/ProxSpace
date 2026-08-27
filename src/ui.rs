@@ -118,6 +118,27 @@ impl Ui {
         let _ = writeln!(stdout, "{text}");
     }
 
+    /// One line of output from an external command.
+    ///
+    /// Dimmed and indented so that ten minutes of pacman chatter stays visibly
+    /// subordinate to our own steps, and never suppressed into nothing: this is
+    /// the only sign that a long command is still alive.
+    pub fn command_line(&self, line: &str) {
+        self.logger.write(Level::Command, line);
+        if !self.options.quiet {
+            println!("    {}", style(line).dim());
+        }
+    }
+
+    /// The same for a command whose output is data rather than news — it is
+    /// always logged, but only shown with `--verbose`.
+    pub fn command_detail(&self, line: &str) {
+        self.logger.write(Level::Command, line);
+        if self.options.verbose && !self.options.quiet {
+            println!("    {}", style(line).dim());
+        }
+    }
+
     /// Ask a yes/no question.
     ///
     /// `--yes` answers every question affirmatively, which is what makes

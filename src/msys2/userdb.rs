@@ -19,10 +19,11 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use thiserror::Error;
 
+use crate::command::{Cmd, CommandError, CommandRunner};
+use crate::msys2;
 use crate::ui::Ui;
 
 pub const PASSWD_PATH: &str = "etc/passwd";
@@ -47,18 +48,8 @@ const MKGROUP: &str = "usr/bin/mkgroup.exe";
 pub enum UserDbError {
     #[error("`{path}` is missing; the msys2 tree is incomplete")]
     ToolMissing { path: PathBuf },
-    #[error("cannot run `{path}`")]
-    ToolFailed {
-        path: PathBuf,
-        #[source]
-        source: io::Error,
-    },
-    #[error("`{path}` failed ({status}){}", detail(.stderr))]
-    ToolRefused {
-        path: PathBuf,
-        status: String,
-        stderr: String,
-    },
+    #[error(transparent)]
+    Tool(#[from] CommandError),
     #[error(
         "cannot make sense of what `{tool}` reported about the current account\n  \
          expected {expected}, got: {line}"
@@ -74,15 +65,6 @@ pub enum UserDbError {
         #[source]
         source: io::Error,
     },
-}
-
-fn detail(stderr: &str) -> String {
-    let text = stderr.trim();
-    if text.is_empty() {
-        String::new()
-    } else {
-        format!("\n  {text}")
-    }
 }
 
 /// The Windows account, as `mkpasswd -c` describes it.
@@ -204,16 +186,20 @@ pub struct AccountOutput {
 }
 
 /// Ask the tree who the current user is, without writing anything.
-pub fn query(root: &Path) -> Result<AccountOutput, UserDbError> {
+pub fn query(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    root: &Path,
+) -> Result<AccountOutput, UserDbError> {
     Ok(AccountOutput {
-        passwd: run_tool(root, MKPASSWD)?,
-        group: run_tool(root, MKGROUP)?,
+        passwd: run_tool(runner, ui, root, MKPASSWD)?,
+        group: run_tool(runner, ui, root, MKGROUP)?,
     })
 }
 
 /// Ask the tree who the current user is and write both files.
-pub fn install(root: &Path, ui: &Ui) -> Result<Written, UserDbError> {
-    let account = query(root)?;
+pub fn install(runner: &dyn CommandRunner, ui: &Ui, root: &Path) -> Result<Written, UserDbError> {
+    let account = query(runner, ui, root)?;
     install_from(root, &account.passwd, &account.group, ui)
 }
 
@@ -265,30 +251,32 @@ fn write_if_different(path: &Path, contents: &str, ui: &Ui) -> Result<bool, User
 /// than through a shell: they sit next to `msys-2.0.dll`, so they load, and
 /// there is no shell yet to run them in — this is what makes the shell usable
 /// in the first place.
-fn run_tool(root: &Path, relative: &str) -> Result<String, UserDbError> {
+/// Run one of the account tools and hand back what it printed.
+///
+/// Through the [`CommandRunner`] like everything else that shells out, which is
+/// what lets the whole of `prepare()` be exercised against a directory that
+/// only looks like an msys2 tree: `mkpasswd.exe` is the one thing in here that
+/// cannot be faked on disk.
+fn run_tool(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    root: &Path,
+    relative: &str,
+) -> Result<String, UserDbError> {
     let path = root.join(relative);
     if !path.is_file() {
         return Err(UserDbError::ToolMissing { path });
     }
 
-    let output =
-        Command::new(&path)
+    let output = runner.run(
+        ui,
+        &Cmd::new(&path)
+            .envs(msys2::tool_env(root))
             .arg("-c")
-            .output()
-            .map_err(|source| UserDbError::ToolFailed {
-                path: path.clone(),
-                source,
-            })?;
-
-    if !output.status.success() {
-        return Err(UserDbError::ToolRefused {
-            path,
-            status: output.status.to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        });
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+            .quiet(),
+    )?;
+    output.check()?;
+    Ok(output.stdout)
 }
 
 #[cfg(test)]
@@ -447,7 +435,7 @@ mod tests {
     #[test]
     fn a_missing_tool_names_the_file_that_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let error = install(dir.path(), &silent_ui()).unwrap_err();
+        let error = install(&crate::command::ProcessRunner, &silent_ui(), dir.path()).unwrap_err();
 
         assert!(matches!(error, UserDbError::ToolMissing { .. }));
         assert!(error.to_string().contains("mkpasswd.exe"));

@@ -19,9 +19,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Format version of the state file. Bumping it requires a migration step
-/// (planned for the update-handling work); older files are refused rather than
-/// silently misread.
+/// Format version of the state file. Bumping it requires a migration step;
+/// older files are refused rather than silently misread.
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// Steps of the install pipeline, in the order they are performed.
@@ -273,12 +272,20 @@ impl State {
 
 /// Compare install paths the way Windows does: case-insensitively, and without
 /// caring whether a trailing separator is present.
+///
+/// When both paths exist the filesystem answers instead, which also settles
+/// short names, symbolic links and `.` components. The recorded path usually
+/// does not exist any more — that is the situation being detected — so the
+/// textual comparison is what normally decides.
 fn paths_equal(a: &Path, b: &Path) -> bool {
     fn normalise(path: &Path) -> String {
         path.to_string_lossy()
             .trim_end_matches(['\\', '/'])
             .to_lowercase()
             .replace('/', "\\")
+    }
+    if let (Ok(a), Ok(b)) = (fs::canonicalize(a), fs::canonicalize(b)) {
+        return a == b;
     }
     normalise(a) == normalise(b)
 }
@@ -405,5 +412,30 @@ mod tests {
     #[test]
     fn a_fresh_install_is_never_reported_as_moved() {
         assert!(!State::default().was_moved_from(Path::new(r"C:\ProxSpace")));
+    }
+
+    #[test]
+    fn a_directory_that_merely_starts_the_same_is_a_different_directory() {
+        let state = populated();
+        assert!(state.was_moved_from(Path::new(r"C:\ProxSpace2")));
+        assert!(state.was_moved_from(Path::new(r"C:\ProxSpace\msys2")));
+        assert!(state.was_moved_from(Path::new(r"C:\Prox")));
+    }
+
+    #[test]
+    fn two_spellings_of_one_real_directory_are_not_a_move() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("install");
+        fs::create_dir(&here).unwrap();
+
+        let state = State {
+            install_path: Some(here.to_string_lossy().into_owned()),
+            ..State::default()
+        };
+
+        // The same directory written a longer way round: only the filesystem
+        // can tell that these are one place.
+        assert!(!state.was_moved_from(&here.join(".").join(".")));
+        assert!(state.was_moved_from(&dir.path().join("elsewhere")));
     }
 }

@@ -1,9 +1,9 @@
 //! The one way this binary talks to the network.
 //!
 //! Everything that downloads goes through the [`HttpClient`] trait rather than
-//! calling `ureq` directly, for the reason given in `DECISIONS.md` §2.6: the
-//! only download that matters is a hundred-megabyte archive, which no test can
-//! afford to fetch. With the trait in the way, the interesting part — resume,
+//! calling `ureq` directly, for one reason: the only download that matters is a
+//! hundred-megabyte archive, which no test can afford to fetch. With the trait
+//! in the way, the interesting part — resume,
 //! hash checking, cleanup after a failure — is testable against a fake, and the
 //! real implementation stays small enough to be read rather than tested.
 //!
@@ -84,7 +84,7 @@ pub trait HttpClient {
     fn send(&self, request: &Request) -> Result<Response, HttpError>;
 }
 
-/// The real client, on `ureq` (`DECISIONS.md` Q13).
+/// The real client, on `ureq`.
 pub struct UreqClient {
     agent: ureq::Agent,
 }

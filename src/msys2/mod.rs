@@ -2,23 +2,23 @@
 //! onto disk intact.
 //!
 //! Everything version-specific about msys2 lives in the constants below, in one
-//! place, because bumping msys2 means editing exactly them (`DECISIONS.md`
-//! §4.1).
+//! place, because bumping msys2 means editing exactly them.
 
 pub mod fstab;
 pub mod procs;
 pub mod userdb;
 
+use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::archive::{self, ExtractError};
 use crate::assets::{self, AssetError};
+use crate::command::{Cmd, CommandError, CommandRunner};
 use crate::download::{self, DownloadError};
 use crate::http::HttpClient;
 use crate::interrupt::{self, Interrupted};
@@ -35,7 +35,7 @@ pub const MSYS2_VERSION: &str = "20260611";
 pub const MSYS2_URL: &str =
     "https://mirror.msys2.org/distrib/x86_64/msys2-base-x86_64-20260611.tar.xz";
 
-/// sha256 of the archive at [`MSYS2_URL`] (`DECISIONS.md` Q4).
+/// sha256 of the archive at [`MSYS2_URL`].
 ///
 /// Computed from the file itself and cross-checked against a second mirror.
 /// Upstream publishes no checksum file alongside the archive, so this constant
@@ -136,8 +136,8 @@ impl ArchiveSource {
 ///   `Extracted` and the leftover archive is cleaned up on the next run.
 ///
 /// What it deliberately does not do is decide whether an *existing* tree should
-/// be replaced because a newer msys2 shipped: that is the update matrix of
-/// `DECISIONS.md` §4.1, and it belongs with the rest of the install pipeline.
+/// be replaced because a newer msys2 shipped: that decision needs the whole
+/// picture and belongs with the rest of the install pipeline.
 pub fn ensure_tree(
     client: &dyn HttpClient,
     ui: &Ui,
@@ -203,8 +203,8 @@ pub fn ensure_tree(
 /// Delete the base archive once it is no longer needed.
 ///
 /// Failing to delete it is not worth failing an otherwise complete install
-/// over (`DECISIONS.md` D3): the tree is in place either way, so say so and
-/// leave the file for the user.
+/// over: the tree is in place either way, so say so and leave the file for the
+/// user.
 fn discard_archive(ui: &Ui, paths: &Paths, source: &ArchiveSource) {
     let archive = source.archive_path(paths);
     if !archive.exists() {
@@ -336,11 +336,53 @@ pub fn version_from_url(url: &str) -> Option<&str> {
     is_datestamp.then_some(version)
 }
 
+/// The msys2 subsystem ProxSpace runs in. It decides which prefix
+/// (`/ucrt64`) is on `$PATH` and which package set the environment is built
+/// from; the original used `MINGW64`, this port moved to UCRT64.
+pub const MSYSTEM: &str = "UCRT64";
+
+/// Environment for an msys2 program started directly as a Windows process,
+/// without going through a login shell.
+///
+/// `PATH` is replaced rather than extended, and that is the whole point.
+/// Every msys2 program loads `msys-2.0.dll` by name, so a Cygwin or a second
+/// msys2 installation earlier on the user's `PATH` gets loaded instead of ours,
+/// and the two runtimes refuse to share a process ("shared region is corrupted"
+/// / "heap version mismatch"). The symptom is an install that fails on a
+/// machine with Git for Windows on it and nowhere else. The Windows system
+/// directories stay on the path because that is where the OS keeps the DLLs
+/// every process needs.
+pub fn tool_env(tree: &Path) -> Vec<(OsString, OsString)> {
+    // The order a UCRT64 login shell ends up with: the subsystem's own prefix
+    // first, then the msys2 core. Anything built for UCRT64 — python and the
+    // proxmark3 toolchain — needs its DLLs found before the msys2 ones.
+    let mut path = OsString::from(tree.join("ucrt64/bin"));
+    path.push(";");
+    path.push(tree.join("usr/bin"));
+    for directory in windows_system_dirs() {
+        path.push(";");
+        path.push(directory);
+    }
+    vec![
+        (OsString::from("PATH"), path),
+        (OsString::from("MSYSTEM"), OsString::from(MSYSTEM)),
+    ]
+}
+
+/// Where Windows keeps its own DLLs and tools. Read from the environment
+/// rather than hardcoded to `C:\Windows`: it is not always there.
+fn windows_system_dirs() -> Vec<PathBuf> {
+    let root = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    vec![root.join("System32"), root]
+}
+
 /// Directories msys2 needs but does not create for itself. The base archive
 /// ships without them and `/etc/profile` assumes both are there.
 ///
 /// `otp/`, which `setup.cmd` also created, is deliberately not here: nothing in
-/// any script of the original ever refers to it (`ANALYSIS.md` §9).
+/// any script of the original ever refers to it.
 const REQUIRED_DIRS: &[&str] = &["tmp", "dev"];
 
 #[derive(Debug, Error)]
@@ -388,13 +430,18 @@ impl Prepared {
 /// This is `setup/setup.cmd`, minus the parts that turned out to be either
 /// pointless or actively unwanted: no `otp/`, no deleting `/etc/passwd` only to
 /// write the same thing back, and no `rebaseall` — that one now happens only
-/// when asked for (`DECISIONS.md` Q7), because it took a minute off every
-/// single start to fix a problem most installs never have.
+/// when asked for, because it took a minute off every single start to fix a
+/// problem most installs never have.
 ///
 /// Cheap and idempotent by design, so that every command can call it first
 /// without anyone having to reason about whether this particular one needs to.
 /// The way it stays cheap is that each step compares before it writes.
-pub fn prepare(paths: &Paths, ui: &Ui, mounts: &fstab::Mounts) -> Result<Prepared, PrepareError> {
+pub fn prepare(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    paths: &Paths,
+    mounts: &fstab::Mounts,
+) -> Result<Prepared, PrepareError> {
     let tree = paths.msys2();
     if !tree.is_dir() {
         return Err(PrepareError::TreeMissing { path: tree });
@@ -402,8 +449,8 @@ pub fn prepare(paths: &Paths, ui: &Ui, mounts: &fstab::Mounts) -> Result<Prepare
 
     // Asked before anything is written, because the answer comes from two
     // external programs and failing after a half-written tree would be worse.
-    let account = userdb::query(&tree)?;
-    prepare_with_account(paths, ui, mounts, &account.passwd, &account.group)
+    let account = userdb::query(runner, ui, &tree)?;
+    prepare_with_account(ui, paths, mounts, &account.passwd, &account.group)
 }
 
 /// The same, for an account already looked up.
@@ -412,8 +459,8 @@ pub fn prepare(paths: &Paths, ui: &Ui, mounts: &fstab::Mounts) -> Result<Prepare
 /// only looks like an msys2 tree: `mkpasswd.exe` cannot be faked, and a step
 /// this central should not be testable only on a machine with a real install.
 pub fn prepare_with_account(
-    paths: &Paths,
     ui: &Ui,
+    paths: &Paths,
     mounts: &fstab::Mounts,
     mkpasswd_output: &str,
     mkgroup_output: &str,
@@ -466,14 +513,8 @@ fn ensure_dir(path: &Path) -> Result<Option<PathBuf>, PrepareError> {
 pub enum RebaseError {
     #[error("`{path}` is missing; the msys2 tree is incomplete")]
     ToolMissing { path: PathBuf },
-    #[error("cannot run `{path}`")]
-    Failed {
-        path: PathBuf,
-        #[source]
-        source: io::Error,
-    },
-    #[error("rebasing the msys2 DLLs failed ({status})")]
-    Refused { status: String },
+    #[error(transparent)]
+    Command(#[from] CommandError),
     #[error(transparent)]
     Procs(#[from] ProcsError),
 }
@@ -485,11 +526,11 @@ pub enum RebaseError {
 /// symptom is builds failing at random with "unable to remap" — and nothing
 /// else looks wrong, which is why the original ran this on every single start.
 ///
-/// Here it runs only for `repair --rebase` (`DECISIONS.md` Q7). It is slow, it
-/// requires that nothing else in the tree is running, and it fixes a problem
-/// that most installs never have; paying for it on every start to avoid
-/// explaining it once was the wrong trade.
-pub fn rebase(paths: &Paths, ui: &Ui) -> Result<(), RebaseError> {
+/// Here it runs only for `repair --rebase`. It is slow, it requires that
+/// nothing else in the tree is running, and it fixes a problem that most
+/// installs never have; paying for it on every start to avoid explaining it
+/// once was the wrong trade.
+pub fn rebase(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths) -> Result<(), RebaseError> {
     let tree = paths.msys2();
     let dash = tree.join("usr/bin/dash.exe");
     if !dash.is_file() {
@@ -502,32 +543,19 @@ pub fn rebase(paths: &Paths, ui: &Ui) -> Result<(), RebaseError> {
 
     ui.step("rebasing the msys2 DLLs (this takes a while)");
     let spinner = ui.spinner("rebasing");
-    let output = Command::new(&dash)
-        .arg("/usr/bin/rebaseall")
-        .arg("-p")
-        .output();
+    // The command is long and chatty and its output — a list of every DLL it
+    // touched — matters only when it goes wrong, so it stays in the log unless
+    // `--verbose` asks for it.
+    let output = runner.run(
+        ui,
+        &Cmd::new(&dash)
+            .arg("/usr/bin/rebaseall")
+            .arg("-p")
+            .label("rebasing the msys2 DLLs")
+            .quiet(),
+    );
     spinner.finish_and_clear();
-
-    let output = output.map_err(|source| RebaseError::Failed {
-        path: dash.clone(),
-        source,
-    })?;
-
-    // The command is long and chatty and its output matters only when it goes
-    // wrong, so it goes to the log rather than the screen. Streaming it live is
-    // what `CommandRunner` will be for.
-    for stream in [&output.stdout, &output.stderr] {
-        let text = String::from_utf8_lossy(stream);
-        if !text.trim().is_empty() {
-            ui.logger().write(crate::logging::Level::Info, text.trim());
-        }
-    }
-
-    if !output.status.success() {
-        return Err(RebaseError::Refused {
-            status: output.status.to_string(),
-        });
-    }
+    output?.check()?;
 
     ui.success("msys2 DLLs rebased");
     Ok(())

@@ -12,12 +12,16 @@
 //! Module map:
 //!
 //! - [`paths`] — where everything is on disk (always next to the executable)
+//! - [`command`] — the only way out to another program
 //! - [`http`] — the only way out to the network
 //! - [`download`] — fetching a file over it, resumably
 //! - [`archive`] — unpacking what was fetched
 //! - [`assets`] — the files ProxSpace puts inside that tree
+//! - [`packages`] — the package set the environment is made of
+//! - [`pacman`] — installing that set, and the pin that survives an upgrade
 //! - [`msys2`] — which msys2 this build installs, and getting it intact
 //! - [`preflight`] — checks run before the environment is touched
+//! - [`install`] — the pipeline that puts all of it together
 //! - [`state`] — the install pipeline and its persisted state
 //! - [`ui`] — every message the user sees
 //! - [`logging`] — the log file those messages are mirrored to
@@ -27,11 +31,15 @@
 pub mod archive;
 pub mod assets;
 pub mod cli;
+pub mod command;
 pub mod download;
 pub mod http;
+pub mod install;
 pub mod interrupt;
 pub mod logging;
 pub mod msys2;
+pub mod packages;
+pub mod pacman;
 pub mod paths;
 pub mod preflight;
 pub mod state;

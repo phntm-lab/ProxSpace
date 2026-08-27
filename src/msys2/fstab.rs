@@ -1,6 +1,6 @@
 //! `/etc/fstab`: which Windows directories the shell sees, and under what name.
 //!
-//! Three things are mounted, and no more (`DECISIONS.md` §2.2):
+//! Three things are mounted, and no more:
 //!
 //! - `none / cygdrive` drops the `/cygdrive` prefix, so drives are `/c`, `/d`;
 //! - `/pm3` is `$HOME` inside the shell and where proxmark3 sources live;

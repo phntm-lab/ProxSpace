@@ -2,7 +2,7 @@
 //!
 //! The original kept these next to the executable in `setup/` and mounted that
 //! directory as `/setup`. Here they are compiled in with [`include_str!`] and
-//! written into the tree at `opt/proxspace/` (`DECISIONS.md` §2.1), which means
+//! written into the tree at `opt/proxspace/`, which means
 //! nothing but `msys2/`, `pm3/` and two bookkeeping files ever appears next to
 //! the binary, and the assets can never be a version out of step with the code
 //! that relies on them.
@@ -57,10 +57,9 @@ const PM3_WRAPPER_NAMES: &[&str] = &[
     "pm3-flash-fullimage",
 ];
 
-/// The `setup/bin` names of the original, mapped to the subcommand each one
-/// now stands for (`DECISIONS.md` Q5). An empty command means "pass everything
-/// through", which is what makes `proxspace` inside the shell behave like
-/// `proxspace.exe` outside it.
+/// The `setup/bin` names of the original, mapped to the subcommand each one now
+/// stands for. An empty command means "pass everything through", which is what
+/// makes `proxspace` inside the shell behave like `proxspace.exe` outside it.
 const SHIMS: &[(&str, &str)] = &[
     ("proxspace", ""),
     ("ps-setup", "install"),
@@ -443,7 +442,7 @@ mod tests {
             "https://repo.msys2.org/mingw/ucrt64/\
              mingw-w64-ucrt-x86_64-arm-none-eabi-binutils-2.46.1-1-any.pkg.tar.zst"
         ));
-        // The ChameleonMini section ships commented out (`DECISIONS.md` D5).
+        // The ChameleonMini section ships commented out.
         assert!(packages.contents.contains("#mingw-w64-ucrt-x86_64-avrdude"));
         // Nothing from the MINGW64 era may have been left behind.
         assert!(!packages.contents.contains("mingw-w64-x86_64-"));

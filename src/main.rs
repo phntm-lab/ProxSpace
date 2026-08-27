@@ -9,6 +9,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use proxspace::cli::{Cli, Command, EXIT_NOT_IMPLEMENTED};
+use proxspace::command::ProcessRunner;
+use proxspace::http::UreqClient;
+use proxspace::install::{self, Plan};
 use proxspace::interrupt::{self, EXIT_INTERRUPTED};
 use proxspace::logging::{Level, Logger};
 use proxspace::paths::Paths;
@@ -91,20 +94,13 @@ fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
     if let Some(warning) = &loaded.warning {
         ui.warn(warning);
     }
-    let state = loaded.state;
+    let mut state = loaded.state;
     ui.detail(&format!("install state: {}", state.stage));
-    if state.was_moved_from(paths.base()) {
-        ui.warn(&format!(
-            "this environment was installed in `{}` and has been moved here; \
-             the packages will need reinstalling",
-            state.install_path.as_deref().unwrap_or("?")
-        ));
-    }
 
-    dispatch(&command, &ui, &paths, &state)
+    dispatch(&command, &ui, &paths, &mut state)
 }
 
-fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &State) -> Result<i32> {
+fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Result<i32> {
     match command {
         // `info` is the one command that can already say something useful, and
         // the one that has to keep working on a broken install.
@@ -121,8 +117,29 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &State) -> Result<
                 )),
                 None => ui.output("msys2 base not installed"),
             }
+            if state.was_moved_from(paths.base()) {
+                ui.output(&format!(
+                    "moved      from {}",
+                    state.install_path.as_deref().unwrap_or("?")
+                ));
+            }
             ui.output(&format!("log        {}", ui.logger().path().display()));
             Ok(0)
+        }
+
+        Command::Install { force } => {
+            let plan = Plan::shipped(paths)?.forced(*force);
+            match install::ensure_ready(&UreqClient::new(), &ProcessRunner, ui, paths, state, &plan)
+            {
+                Ok(()) => Ok(0),
+                // Ctrl+C surfaces as whichever step noticed it first; the
+                // state file already says how far the install got.
+                Err(error) if interrupt::requested() => {
+                    ui.detail(&format!("stopped: {error}"));
+                    Ok(EXIT_INTERRUPTED)
+                }
+                Err(error) => Err(error.into()),
+            }
         }
         other => {
             if interrupt::requested() {
