@@ -16,14 +16,15 @@ use std::sync::{Arc, Mutex};
 
 use proxspace::command::{Cmd, CommandError, CommandRunner, Output};
 use proxspace::http::{HttpClient, HttpError, Request, Response};
-use proxspace::install::{self, InstallError, Plan};
+use proxspace::install::{self, InstallError, Plan, Reinstall};
 use proxspace::logging::Logger;
 use proxspace::msys2::{ArchiveSource, fstab::Mounts};
 use proxspace::packages::{PackageList, split_package_file};
 use proxspace::pacman;
 use proxspace::paths::Paths;
-use proxspace::state::{Stage, State};
+use proxspace::state::{Msys2Info, Stage, State};
 use proxspace::ui::{Ui, UiOptions};
+use proxspace::update::{self, Options, Outcome, UpdateError};
 
 /// Real `mkpasswd -c` / `mkgroup -c` output, with the account renamed.
 const MKPASSWD: &str = "somebody:unused:1197603:1049089:\
@@ -61,6 +62,20 @@ impl HttpClient for NoNetwork {
     }
 }
 
+/// A network that is there but answers nothing. Used where the reinstall gets
+/// as far as needing the archive: what happens after the old tree is gone is
+/// the install pipeline, which the rest of this file already covers.
+struct DeadNetwork;
+
+impl HttpClient for DeadNetwork {
+    fn send(&self, request: &Request) -> Result<Response, HttpError> {
+        Err(HttpError::Transport {
+            url: request.url.clone(),
+            source: std::io::Error::other("the network is down"),
+        })
+    }
+}
+
 /// pacman, bash and python, as far as the pipeline can tell.
 #[derive(Default)]
 struct Fake {
@@ -93,6 +108,12 @@ impl Fake {
 
     fn calls(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
+    }
+
+    /// Drop the record of what has run so far, so that a test can set an
+    /// environment up with this same fake and then watch only what follows.
+    fn forget(&self) {
+        self.calls.lock().unwrap().clear();
     }
 
     fn ran(&self, fragment: &str) -> bool {
@@ -233,6 +254,7 @@ fn unpacked() -> (tempfile::TempDir, Paths, State) {
 fn plan(paths: &Paths, force: bool) -> Plan {
     Plan {
         source: ArchiveSource::msys2(),
+        min_compatible: proxspace::msys2::MSYS2_MIN_COMPATIBLE.to_string(),
         list: list(),
         mounts: Mounts::for_paths(paths),
         force,
@@ -617,4 +639,236 @@ fn the_dlls_are_rebased_only_when_asked() {
 
     install::repair(&fake, &ui(true), &paths, &plan(&paths, false), true).unwrap();
     assert!(fake.ran("rebaseall"), "got: {:?}", fake.calls());
+}
+
+/// The reinstall exists to replace a tree too old to be upgraded, and the whole
+/// worry about it is what it takes with it. Nothing outside `msys2` may go, and
+/// the state must not go on describing a tree that has been deleted.
+#[test]
+fn a_full_reinstall_takes_the_tree_and_leaves_the_users_work() {
+    let (_dir, paths, mut state) = unpacked();
+    let fake = Fake::default();
+    run(&fake, &paths, &mut state, false).unwrap();
+    assert_eq!(state.stage, Stage::Ready);
+
+    // Months of somebody's work, sitting where ProxSpace puts it.
+    for directory in [paths.pm3(), paths.builds()] {
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("keep-me.c"), b"int main(void) { return 0; }").unwrap();
+    }
+
+    let error = install::reinstall_msys2(
+        &DeadNetwork,
+        &fake,
+        &ui(true),
+        &paths,
+        &mut state,
+        &plan(&paths, false),
+    )
+    .unwrap_err();
+
+    // The old tree is gone; the new one could not be downloaded.
+    assert!(!paths.msys2().exists(), "the old tree survived: {error}");
+    for directory in [paths.pm3(), paths.builds()] {
+        assert!(
+            directory.join("keep-me.c").is_file(),
+            "`{}` lost the user's files",
+            directory.display()
+        );
+    }
+
+    // Nothing left claiming an install that is not there.
+    let saved = State::load(&paths.state_file()).state;
+    assert_eq!(saved.stage, Stage::NotInstalled);
+    assert_eq!(saved.msys2, None);
+    assert_eq!(saved.packages, None);
+    assert!(!saved.pip_extras_installed);
+}
+
+// --- `update`: the two halves, and what each of them runs ---
+
+/// A finished environment whose state records the given msys2 version.
+fn updatable(version: &str) -> (tempfile::TempDir, Paths, State, Fake) {
+    let (dir, paths, mut state) = unpacked();
+    let fake = Fake::default();
+    run(&fake, &paths, &mut state, false).unwrap();
+    state.msys2 = Some(Msys2Info {
+        version: version.to_string(),
+        source_url: "https://mirror.test/msys2-base-x86_64.tar.xz".to_string(),
+        sha256: "0".repeat(64),
+        extracted_at: "2026-08-27T10:00:00Z".to_string(),
+    });
+    state.save(&paths.state_file()).unwrap();
+    fake.forget();
+    (dir, paths, state, fake)
+}
+
+fn update_plan(paths: &Paths, shipped: &str, min_compatible: &str) -> Plan {
+    let mut plan = plan(paths, false);
+    plan.source.version = shipped.to_string();
+    plan.min_compatible = min_compatible.to_string();
+    plan
+}
+
+fn options(msys2: bool, packages: bool, check: bool, reinstall: Reinstall) -> Options {
+    Options {
+        msys2,
+        packages,
+        check,
+        reinstall,
+    }
+}
+
+fn update(
+    fake: &Fake,
+    paths: &Paths,
+    state: &mut State,
+    plan: &Plan,
+    options: &Options,
+) -> Result<Outcome, UpdateError> {
+    update::run(&DeadNetwork, fake, &ui(true), paths, state, plan, options)
+}
+
+/// The base archive gets a new datestamp a few times a year; the packages in it
+/// move every week. An update of a tree that is already at the shipped version
+/// still has work to do.
+#[test]
+fn updating_a_current_tree_still_upgrades_what_is_installed_in_it() {
+    let (_dir, paths, mut state, fake) = updatable("20260611");
+
+    let outcome = update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(true, false, false, Reinstall::WhenNeeded),
+    )
+    .unwrap();
+
+    assert_eq!(outcome, Outcome::Done);
+    assert!(fake.ran("-Syuu"), "no upgrade ran: {:?}", fake.calls());
+}
+
+#[test]
+fn an_upgrade_records_the_version_it_reached() {
+    let (_dir, paths, mut state, fake) = updatable("20260101");
+
+    update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(true, false, false, Reinstall::WhenNeeded),
+    )
+    .unwrap();
+
+    assert!(fake.ran("-Syuu"));
+    let saved = State::load(&paths.state_file()).state;
+    assert_eq!(saved.msys2.expect("msys2 info").version, "20260611");
+}
+
+/// A binary rolled back to an older ProxSpace: the tree keeps the version it
+/// has, because there is no downgrading msys2, but it is still brought forward.
+#[test]
+fn a_tree_newer_than_the_binary_keeps_its_recorded_version() {
+    let (_dir, paths, mut state, fake) = updatable("20270101");
+
+    update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(true, false, false, Reinstall::WhenNeeded),
+    )
+    .unwrap();
+
+    assert!(fake.ran("-Syuu"));
+    let saved = State::load(&paths.state_file()).state;
+    assert_eq!(saved.msys2.expect("msys2 info").version, "20270101");
+}
+
+#[test]
+fn updating_only_the_packages_leaves_msys2_alone() {
+    let (_dir, paths, mut state, fake) = updatable("20260101");
+
+    update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(false, true, false, Reinstall::WhenNeeded),
+    )
+    .unwrap();
+
+    assert!(!fake.ran("-Syuu"), "msys2 was updated: {:?}", fake.calls());
+    let saved = State::load(&paths.state_file()).state;
+    assert_eq!(saved.msys2.expect("msys2 info").version, "20260101");
+}
+
+/// `--check` is for finding out what a run would do, so it must be safe to
+/// type on any environment: no external command, no write. The one thing it
+/// does reach for is GitHub, to say whether a newer ProxSpace exists, and that
+/// request failing changes nothing.
+#[test]
+fn checking_runs_nothing_and_changes_nothing() {
+    let (_dir, paths, mut state, fake) = updatable("20240101");
+    let before = fs::read_to_string(paths.state_file()).unwrap();
+
+    let outcome = update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(false, false, true, Reinstall::WhenNeeded),
+    )
+    .unwrap();
+
+    assert_eq!(outcome, Outcome::Checked);
+    assert_eq!(fake.calls(), Vec::<String>::new());
+    assert_eq!(fs::read_to_string(paths.state_file()).unwrap(), before);
+    assert!(paths.msys2().is_dir());
+}
+
+/// The point of `--no-reinstall`: a tree too old to upgrade is reported, not
+/// deleted.
+#[test]
+fn refusing_a_reinstall_is_an_error_and_not_a_deleted_tree() {
+    let (_dir, paths, mut state, fake) = updatable("20240101");
+
+    let error = update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(true, false, false, Reinstall::Never),
+    )
+    .unwrap_err();
+
+    assert!(
+        error.to_string().contains("--no-reinstall"),
+        "unexpected error: {error}"
+    );
+    assert!(paths.msys2().is_dir(), "the tree was removed anyway");
+    assert_eq!(fake.calls(), Vec::<String>::new());
+}
+
+/// Asking for a reinstall of a tree that needs nothing: the versions are not
+/// consulted, and what goes is the tree, not the user's work.
+#[test]
+fn asking_for_a_reinstall_replaces_even_a_current_tree() {
+    let (_dir, paths, mut state, fake) = updatable("20260611");
+
+    update(
+        &fake,
+        &paths,
+        &mut state,
+        &update_plan(&paths, "20260611", "20250101"),
+        &options(true, false, false, Reinstall::Always),
+    )
+    .unwrap_err();
+
+    // The download is what fails; by then the old tree is already gone.
+    assert!(!paths.msys2().exists());
+    let saved = State::load(&paths.state_file()).state;
+    assert_eq!(saved.stage, Stage::NotInstalled);
 }

@@ -28,6 +28,15 @@ use crate::ui::Ui;
 /// into place.
 const PARTIAL_SUFFIX: &str = ".partial";
 
+/// How many times a tree removal is attempted before it is reported as a
+/// failure.
+const REMOVE_ATTEMPTS: usize = 5;
+
+/// Gap before the second attempt; each further attempt waits a multiple of it,
+/// so the whole thing gives up after about a second and a half rather than
+/// hanging on a file nothing is going to let go of.
+const REMOVE_BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+
 #[derive(Debug, Error)]
 pub enum ExtractError {
     #[error("cannot open the archive `{path}`")]
@@ -46,6 +55,22 @@ pub enum ExtractError {
     },
     #[error("cannot write `{path}`")]
     Io {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error(
+        "cannot remove `{path}`: `{blocker}` is in use by another program
+           close the shell, editor or build using it — or the antivirus scanning it —          and run the command again"
+    )]
+    Blocked {
+        path: PathBuf,
+        blocker: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("cannot remove `{path}`")]
+    Remove {
         path: PathBuf,
         #[source]
         source: io::Error,
@@ -252,20 +277,182 @@ fn split_root(path: &Path) -> Result<(String, Option<PathBuf>), ExtractError> {
 }
 
 /// Delete a directory tree, tolerating one that is not there.
+///
+/// Deleting sixteen thousand files on Windows fails for reasons that have
+/// nothing to do with the caller, so a single `remove_dir_all` is not enough:
+///
+/// - a **read-only file** cannot be deleted at all, and the attribute survives
+///   whatever put it there. Clearing it is the only way past;
+/// - an **antivirus or the search indexer** opens files as they appear and lets
+///   go a moment later, which shows up as a sharing violation that is gone by
+///   the next attempt;
+/// - a **program still using the tree** — a shell, an editor, a build — holds
+///   its file for as long as it runs, and no amount of waiting helps. That one
+///   is reported by name, because "cannot remove msys2" is not something anyone
+///   can act on.
 pub fn remove_tree(path: &Path) -> Result<(), ExtractError> {
-    match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(source) => Err(ExtractError::Io {
+    for attempt in 1..=REMOVE_ATTEMPTS {
+        match fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) if attempt == REMOVE_ATTEMPTS => return Err(removal_failed(path, error)),
+            Err(_) => {
+                interrupt::check()?;
+                // Whatever is left of the tree at this point is what the failed
+                // attempt could not get to; the attribute is the one cause that
+                // never clears itself.
+                clear_read_only(path);
+                std::thread::sleep(REMOVE_BACKOFF * attempt as u32);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Turn a failed removal into something that names a cause.
+fn removal_failed(path: &Path, source: io::Error) -> ExtractError {
+    match blocking_file(path) {
+        Some(blocker) => ExtractError::Blocked {
+            path: path.to_path_buf(),
+            blocker,
+            source,
+        },
+        None => ExtractError::Remove {
             path: path.to_path_buf(),
             source,
-        }),
+        },
     }
+}
+
+/// Clear the read-only attribute from everything in the tree.
+///
+/// Best effort throughout: this runs to make the next removal attempt more
+/// likely to work, and a file it cannot touch is one the removal will report
+/// on its own terms.
+fn clear_read_only(path: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+
+    let mut permissions = metadata.permissions();
+    if permissions.readonly() {
+        // What the mode says afterwards does not matter: the only thing that
+        // happens to this file next is that it is deleted.
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        let _ = fs::set_permissions(path, permissions);
+    }
+
+    // Not through a symbolic link: the target is somewhere else entirely, and
+    // this tree's removal is no reason to go changing it.
+    if metadata.is_dir()
+        && !metadata.is_symlink()
+        && let Ok(entries) = fs::read_dir(path)
+    {
+        for entry in entries.flatten() {
+            clear_read_only(&entry.path());
+        }
+    }
+}
+
+/// Find a file in the tree that another program is holding open.
+///
+/// Windows reports a failed directory removal without saying which file stood
+/// in the way. Opening a file for writing asks it the same question the
+/// deletion asks — is anyone else using this? — and answers it without changing
+/// anything, which is why the tree is probed rather than deleted a second time
+/// file by file.
+fn blocking_file(root: &Path) -> Option<PathBuf> {
+    let entries = fs::read_dir(root).ok()?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if metadata.is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            if let Some(found) = blocking_file(&path) {
+                return Some(found);
+            }
+        } else if let Err(error) = fs::OpenOptions::new().write(true).open(&path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            return Some(path);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A tree with a read-only file in it: `remove_dir_all` alone refuses this
+    /// one on Windows, and pacman leaves such files behind.
+    #[test]
+    fn a_read_only_file_does_not_stop_a_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("msys2");
+        fs::create_dir_all(tree.join("etc")).unwrap();
+
+        let file = tree.join("etc").join("locked.conf");
+        fs::write(&file, "held").unwrap();
+        let mut permissions = fs::metadata(&file).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&file, permissions).unwrap();
+
+        remove_tree(&tree).unwrap();
+        assert!(!tree.exists());
+    }
+
+    #[test]
+    fn removing_what_is_not_there_is_not_a_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        remove_tree(&dir.path().join("never-existed")).unwrap();
+    }
+
+    /// The failure the user actually meets: a program is running from inside
+    /// the tree, and the message has to name the file rather than the folder.
+    #[cfg(windows)]
+    #[test]
+    fn a_file_another_program_holds_is_named() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("msys2");
+        fs::create_dir_all(tree.join("usr").join("bin")).unwrap();
+        let held = tree.join("usr").join("bin").join("bash.exe");
+        fs::write(&held, "program").unwrap();
+
+        // Sharing nothing is how Windows opens a running executable; a file
+        // opened the ordinary way can still be deleted underneath its holder.
+        let _handle = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(&held)
+            .unwrap();
+
+        let error = remove_tree(&tree).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("bash.exe"),
+            "the message should name the file: {message}"
+        );
+        assert!(matches!(error, ExtractError::Blocked { .. }), "{error:?}");
+    }
+
+    #[test]
+    fn a_tree_nothing_is_using_has_no_blocking_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tree = dir.path().join("msys2");
+        fs::create_dir_all(tree.join("usr")).unwrap();
+        fs::write(tree.join("usr").join("free.txt"), "nothing holds this").unwrap();
+
+        assert_eq!(blocking_file(&tree), None);
+    }
 
     #[test]
     fn the_staging_directory_sits_next_to_the_destination() {

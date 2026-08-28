@@ -79,6 +79,15 @@ pub enum Command {
         /// Update the ProxSpace package set only
         #[arg(long)]
         packages: bool,
+        /// Say what would be updated and change nothing
+        #[arg(long)]
+        check: bool,
+        /// Replace the msys2 tree even if it could be upgraded in place
+        #[arg(long, conflicts_with = "no_reinstall")]
+        reinstall_msys2: bool,
+        /// Report instead of replacing the msys2 tree, whatever its version
+        #[arg(long)]
+        no_reinstall: bool,
     },
 
     /// Reinstall every installed package on top of itself to fix a broken tree
@@ -204,6 +213,36 @@ mod tests {
     #[test]
     fn quiet_and_verbose_are_mutually_exclusive() {
         assert!(Cli::try_parse_from(["proxspace", "--quiet", "--verbose", "info"]).is_err());
+    }
+
+    #[test]
+    fn the_two_reinstall_flags_are_mutually_exclusive() {
+        assert!(
+            Cli::try_parse_from(["proxspace", "update", "--reinstall-msys2", "--no-reinstall"])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn update_takes_both_reinstall_flags_on_their_own() {
+        for (args, expected) in [
+            (vec!["proxspace", "update"], (false, false)),
+            (
+                vec!["proxspace", "update", "--reinstall-msys2"],
+                (true, false),
+            ),
+            (vec!["proxspace", "update", "--no-reinstall"], (false, true)),
+        ] {
+            let cli = Cli::try_parse_from(args.clone()).unwrap();
+            match cli.command {
+                Some(Command::Update {
+                    reinstall_msys2,
+                    no_reinstall,
+                    ..
+                }) => assert_eq!((reinstall_msys2, no_reinstall), expected, "{args:?}"),
+                other => panic!("expected update, got {other:?}"),
+            }
+        }
     }
 
     #[test]

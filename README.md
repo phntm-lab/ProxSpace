@@ -9,9 +9,9 @@ into a shell.
 
 ## Status
 
-Work in progress. Provisioning, the shell, `exec`, `repair`, `info`, `mirrors`
-and `clean` all work; none of it has been run against a real msys2 tree yet.
-`update` and `autobuild` are not built: they say so and exit with code 3.
+Work in progress. Provisioning, the shell, `exec`, `update`, `repair`, `info`,
+`mirrors` and `clean` all work; none of it has been run against a real msys2
+tree yet. `autobuild` is not built: it says so and exits with code 3.
 
 ## What it is not
 

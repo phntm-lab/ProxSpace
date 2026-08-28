@@ -29,9 +29,11 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::archive::{self, ExtractError};
 use crate::command::{Cmd, CommandError, CommandRunner};
 use crate::http::HttpClient;
 use crate::interrupt::Interrupted;
+use crate::msys2::procs::{self, ProcsError};
 use crate::msys2::shell::BASH;
 use crate::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
 use crate::packages::{PackageList, PackagesError, PkgSpec};
@@ -64,6 +66,17 @@ pub enum InstallError {
     Rebase(#[from] RebaseError),
     #[error(transparent)]
     Interrupted(#[from] Interrupted),
+    #[error(transparent)]
+    Extract(#[from] ExtractError),
+    #[error(transparent)]
+    Procs(#[from] ProcsError),
+    #[error(
+        "the msys2 tree here is {from}, too old to be brought up to {to} in place, \
+         and `--no-reinstall` forbids replacing it\n  \
+         run the command again without `--no-reinstall` to delete `msys2` and install it \
+         afresh — `pm3` and `builds` are never touched"
+    )]
+    ReinstallForbidden { from: String, to: String },
     #[error("`{path}` is not there; the msys2 tree is incomplete")]
     ToolMissing { path: PathBuf },
     #[error(
@@ -87,6 +100,10 @@ pub enum InstallError {
 /// installing five gigabytes.
 pub struct Plan {
     pub source: ArchiveSource,
+    /// Oldest tree `pacman -Syuu` can still bring up to `source.version`.
+    /// Alongside the source for the same reason: it is part of what this build
+    /// ships, and the update matrix is worth testing without a real tree.
+    pub min_compatible: String,
     pub list: PackageList,
     pub mounts: fstab::Mounts,
     /// Install every package in the list again, whether or not it is already
@@ -100,6 +117,7 @@ impl Plan {
     pub fn shipped(paths: &Paths) -> Result<Plan, InstallError> {
         Ok(Plan {
             source: ArchiveSource::msys2(),
+            min_compatible: msys2::MSYS2_MIN_COMPATIBLE.to_string(),
             list: PackageList::shipped()?,
             mounts: fstab::Mounts::for_paths(paths),
             force: false,
@@ -249,9 +267,7 @@ pub fn repair(
     }
 
     let pins: Vec<&PkgSpec> = plan.list.pinned().collect();
-    install_pins(&env, &pins)?;
-    write_pin_block(&env, &plan.list)?;
-    verify_pins(&env, &plan.list)?;
+    settle_pins(&env, &plan.list, &pins)?;
 
     if rebase {
         msys2::rebase(runner, ui, paths)?;
@@ -383,11 +399,21 @@ fn update_core(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
     }
 
     env.ui.step("updating msys2");
-    env.pacman.reset_sync_db(env.ui)?;
-    env.pacman.system_upgrade(env.runner, env.ui)?;
+    run_core_upgrade(env)?;
 
     env.record(state, Stage::CoreUpdated)?;
     env.ui.success("msys2 updated");
+    Ok(())
+}
+
+/// `pacman -Syuu` on databases that are thrown away first.
+///
+/// The databases are reset rather than refreshed because the ones a tree
+/// carries are as old as the base archive, and pacman is happier being told to
+/// fetch them afresh than to reconcile them.
+fn run_core_upgrade(env: &Env<'_>) -> Result<(), InstallError> {
+    env.pacman.reset_sync_db(env.ui)?;
+    env.pacman.system_upgrade(env.runner, env.ui)?;
     Ok(())
 }
 
@@ -493,9 +519,7 @@ fn install_packages(
     };
     pins.extend(installed.stale_pins(list));
     pins.dedup_by_key(|spec| spec.name());
-    install_pins(env, &pins)?;
-    write_pin_block(env, list)?;
-    verify_pins(env, list)?;
+    settle_pins(env, list, &pins)?;
 
     state.packages = Some(PackagesInfo {
         installed_at: timestamp(),
@@ -519,6 +543,20 @@ fn install_pins(env: &Env<'_>, pins: &[&PkgSpec]) -> Result<(), InstallError> {
         env.pacman.install_url(env.runner, env.ui, url)?;
     }
     Ok(())
+}
+
+/// Put every pin back where the list says it should be, and check that it
+/// stayed there.
+///
+/// The three steps always go together: installing a pin from its URL means
+/// nothing if `pacman.conf` does not then hold it, and holding it means nothing
+/// if nobody looks at what is actually installed afterwards. `pins` are the
+/// ones that need installing — on a fresh tree that is all of them, after an
+/// upgrade only the ones something moved.
+fn settle_pins(env: &Env<'_>, list: &PackageList, pins: &[&PkgSpec]) -> Result<(), InstallError> {
+    install_pins(env, pins)?;
+    write_pin_block(env, list)?;
+    verify_pins(env, list)
 }
 
 /// Put the list's pins into `pacman.conf`, and nothing else.
@@ -641,6 +679,310 @@ pub fn is_ready(paths: &Paths, state: &State) -> bool {
     state.stage >= Stage::Ready && paths.msys2().join(BASH).is_file()
 }
 
+/// Bring an installed tree up to date where it stands: `pacman -Syuu`, then
+/// the pins put back.
+///
+/// This is the non-destructive half of updating. It is also what makes an
+/// update worth running at all between msys2 releases: the base archive gets a
+/// new datestamp a few times a year, while the packages in it move every week.
+///
+/// The pins are settled afterwards because an upgrade is exactly the thing that
+/// walks over them — `IgnorePkg` can be overruled by a dependency, and a
+/// newer `arm-none-eabi-binutils` is what breaks the proxmark3 firmware build.
+pub fn upgrade_msys2(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    paths: &Paths,
+    plan: &Plan,
+) -> Result<(), InstallError> {
+    let env = Env {
+        runner,
+        ui,
+        paths,
+        pacman: Pacman::new(&paths.msys2()),
+    };
+
+    ui.step("updating msys2 and everything installed in it");
+    run_core_upgrade(&env)?;
+
+    let installed = env.pacman.query_installed(runner, ui)?;
+    let moved: Vec<&PkgSpec> = installed.stale_pins(&plan.list);
+    if !moved.is_empty() {
+        ui.info("the upgrade moved a pinned package; putting it back");
+    }
+    settle_pins(&env, &plan.list, &moved)?;
+
+    ui.success("msys2 is up to date");
+    Ok(())
+}
+
+/// Install whatever this build's package list asks for and the tree does not
+/// have.
+///
+/// The other half of updating, and the one that has nothing to do with msys2
+/// versions: a newer ProxSpace ships a longer list, and what is missing from it
+/// is installed without touching the sixty packages that did not change.
+pub fn update_packages(
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    paths: &Paths,
+    state: &mut State,
+    plan: &Plan,
+) -> Result<(), InstallError> {
+    let env = Env {
+        runner,
+        ui,
+        paths,
+        pacman: Pacman::new(&paths.msys2()),
+    };
+    install_packages(&env, state, &plan.list, plan.force)
+}
+
+/// Whether the package set on disk is the one this build ships.
+pub fn packages_are_current(state: &State, list: &PackageList) -> bool {
+    reason_to_install(state, &list.list_hash(), false).is_none()
+}
+
+/// Throw the msys2 tree away and install it again from scratch.
+///
+/// The last resort of the update matrix, for a tree too old for `pacman -Syuu`
+/// to bring all the way forward. It costs a download and a full package install
+/// — twenty minutes and five gigabytes — which is why nothing reaches here
+/// without the user having agreed to it.
+///
+/// Only `msys2/` goes. `pm3/` and `builds/` are never touched by this or by
+/// anything else in ProxSpace: the proxmark3 sources and everything built from
+/// them are the user's, and a version bump is no reason to take months of work
+/// with it.
+pub fn reinstall_msys2(
+    http: &dyn HttpClient,
+    runner: &dyn CommandRunner,
+    ui: &Ui,
+    paths: &Paths,
+    state: &mut State,
+    plan: &Plan,
+) -> Result<(), InstallError> {
+    let tree = paths.msys2();
+
+    // Windows will not delete a folder anything is running from, and the
+    // leftovers pacman keeps around — gpg-agent and friends — are exactly that.
+    if procs::stop_holders(&tree, ui)?.stopped_anything() {
+        ui.detail("everything using the tree has been stopped");
+    }
+
+    ui.step("removing the old msys2 tree");
+    archive::remove_tree(&tree)?;
+
+    // Written out before the install starts: a run that dies between the
+    // removal and the first step of the install must not leave a state file
+    // describing a tree that is no longer there.
+    state.forget_msys2()?;
+    state.save(&paths.state_file())?;
+    ui.detail("the old tree is gone; `pm3` and `builds` were left alone");
+
+    ensure_ready(http, runner, ui, paths, state, plan)
+}
+
+/// Manual control over the one step that destroys something.
+///
+/// Without either flag the matrix decides on its own. The flags exist because
+/// both of its answers can be the wrong one for somebody: a tree at the right
+/// version can still be beyond repair, and a reinstall the matrix thinks is
+/// warranted is the last thing a user on a slow connection wants to discover
+/// after typing `update`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Reinstall {
+    /// No flag given: the versions decide.
+    #[default]
+    WhenNeeded,
+    /// `--reinstall-msys2`: replace the tree whatever the versions say.
+    Always,
+    /// `--no-reinstall`: never replace the tree; report instead.
+    Never,
+}
+
+impl Reinstall {
+    /// What the two flags mean together. They cannot both be given — clap
+    /// refuses that — so the fourth combination never arrives.
+    pub fn from_flags(always: bool, never: bool) -> Reinstall {
+        match (always, never) {
+            (true, _) => Reinstall::Always,
+            (_, true) => Reinstall::Never,
+            _ => Reinstall::WhenNeeded,
+        }
+    }
+}
+
+/// What has to happen to the msys2 tree for it to be the one this build
+/// expects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Update {
+    /// There is no tree to update.
+    Install,
+    /// The tree is already the version this build ships.
+    UpToDate { version: String },
+    /// The tree is newer than what this build ships, which means the binary was
+    /// replaced by an older one. Downgrading msys2 is not something pacman does
+    /// and not something worth inventing: the newer tree works.
+    Newer { installed: String, shipped: String },
+    /// Old enough to need updating, new enough for `pacman -Syuu` to do it.
+    Upgrade { from: String, to: String },
+    /// Too old for `pacman -Syuu` to get all the way: the tree goes and a fresh
+    /// one takes its place.
+    Reinstall { from: String, to: String },
+    /// The tree needs replacing and `--no-reinstall` forbids it. Nothing is
+    /// done, and the caller says why rather than doing half of it.
+    Blocked { from: String, to: String },
+}
+
+impl Update {
+    /// Whether nothing at all can be done. Only a refused reinstall gets here:
+    /// every other row has at least an in-place upgrade to run.
+    pub fn is_blocked(&self) -> bool {
+        matches!(self, Update::Blocked { .. })
+    }
+
+    /// Whether it throws the tree away, which is what has to be agreed to
+    /// before it happens.
+    pub fn destroys_the_tree(&self) -> bool {
+        matches!(self, Update::Reinstall { .. })
+    }
+
+    /// What the user is told is about to happen, in one line.
+    pub fn summary(&self) -> String {
+        match self {
+            Update::Install => {
+                "msys2 is not installed here; it will be downloaded and set up".to_string()
+            }
+            Update::UpToDate { version } => format!(
+                "msys2 {version} is the version this ProxSpace ships; \
+                 everything installed in it will be brought up to date in place"
+            ),
+            Update::Newer { installed, shipped } => format!(
+                "this tree holds msys2 {installed}, newer than the {shipped} this ProxSpace ships — \
+                 it keeps its version, and everything installed in it is brought up to date"
+            ),
+            Update::Upgrade { from, to } => format!(
+                "msys2 {from} will be brought up to {to} in place with `pacman -Syuu`; \
+                 nothing in the tree is deleted"
+            ),
+            Update::Reinstall { from, to } => format!(
+                "msys2 {from} is too old to be upgraded to {to} in place: the `msys2` folder will be \
+                 deleted and installed afresh, and every package with it"
+            ),
+            Update::Blocked { from, to } => format!(
+                "msys2 {from} would have to be replaced to reach {to}, \
+                 which `--no-reinstall` forbids; nothing will be done"
+            ),
+        }
+    }
+}
+
+/// Decide what an update run does, from the state file and what is on disk.
+pub fn plan_update(paths: &Paths, state: &State, plan: &Plan, reinstall: Reinstall) -> Update {
+    // Both halves have to agree that there is a tree: a state file left behind
+    // by a deleted folder describes nothing, and a folder no state file knows
+    // about cannot be told apart from a half-finished install.
+    let installed = match (&state.msys2, paths.msys2().join(BASH).is_file()) {
+        (Some(info), true) => Some(info.version.as_str()),
+        _ => None,
+    };
+    decide_update(
+        installed,
+        &plan.source.version,
+        &plan.min_compatible,
+        reinstall,
+    )
+}
+
+/// The decision itself, over nothing but version strings, so that every row of
+/// it can be checked without a five-gigabyte tree on disk.
+///
+/// `installed` is what the state file records, or `None` when there is no tree.
+/// Versions are msys2 datestamps and compare as strings; anything that is not a
+/// datestamp — a hand-edited or corrupted state file — is not ordered against
+/// the rest, and gets the upgrade, which is the one answer that cannot destroy
+/// a working tree.
+pub fn decide_update(
+    installed: Option<&str>,
+    shipped: &str,
+    min_compatible: &str,
+    reinstall: Reinstall,
+) -> Update {
+    let Some(installed) = installed else {
+        // Nothing to reinstall and nothing to refuse: either flag means the
+        // same thing here as no flag at all.
+        return Update::Install;
+    };
+    let (from, to) = (installed.to_string(), shipped.to_string());
+
+    if reinstall == Reinstall::Always {
+        return Update::Reinstall { from, to };
+    }
+    if !is_datestamp(installed) {
+        return Update::Upgrade { from, to };
+    }
+    if installed == shipped {
+        return Update::UpToDate { version: from };
+    }
+    if installed > shipped {
+        return Update::Newer {
+            installed: from,
+            shipped: to,
+        };
+    }
+    if installed >= min_compatible {
+        Update::Upgrade { from, to }
+    } else if reinstall == Reinstall::Never {
+        Update::Blocked { from, to }
+    } else {
+        Update::Reinstall { from, to }
+    }
+}
+
+/// A msys2 version as upstream writes them: eight digits, `YYYYMMDD`.
+fn is_datestamp(version: &str) -> bool {
+    version.len() == 8 && version.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+/// Show the plan, and get it agreed to when it destroys the tree.
+///
+/// Returns whether to go ahead. The plan is always shown before anything
+/// happens: an update that turns out to mean "your five gigabytes are about to
+/// be deleted" should never be a surprise.
+pub fn confirm_update(ui: &Ui, update: &Update) -> bool {
+    match update {
+        Update::Newer { .. } | Update::Blocked { .. } => ui.warn(&update.summary()),
+        _ => ui.info(&update.summary()),
+    }
+
+    if update.is_blocked() {
+        return false;
+    }
+    if !update.destroys_the_tree() {
+        return true;
+    }
+
+    ui.info("`pm3` and `builds` are not touched; the proxmark3 sources and anything built from them stay");
+    match ui.confirm("delete the msys2 tree and install it again?", false) {
+        Ok(answer) => {
+            if !answer {
+                ui.info("left as it is; the environment goes on working as before");
+            }
+            answer
+        }
+        // No terminal to ask on and no `--yes`. Deleting gigabytes on a guess
+        // is the one thing that must not happen here.
+        Err(_) => {
+            ui.warn(
+                "cannot ask whether to reinstall msys2; run the command again with `--yes` \
+                 to agree to it in advance",
+            );
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -649,6 +991,14 @@ mod tests {
     /// spaces between them.
     fn line_length(batch: &[&str]) -> usize {
         batch.iter().map(|name| name.len() + 1).sum()
+    }
+
+    #[test]
+    fn the_flags_translate_into_the_override() {
+        assert_eq!(Reinstall::from_flags(false, false), Reinstall::WhenNeeded);
+        assert_eq!(Reinstall::from_flags(true, false), Reinstall::Always);
+        assert_eq!(Reinstall::from_flags(false, true), Reinstall::Never);
+        assert_eq!(Reinstall::default(), Reinstall::WhenNeeded);
     }
 
     #[test]

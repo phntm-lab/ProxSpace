@@ -113,6 +113,62 @@ fn a_truncated_file_is_reported_and_treated_as_a_fresh_install() {
 }
 
 #[test]
+fn a_state_file_in_an_unreachable_older_format_is_reported_and_started_over() {
+    let dir = base();
+    let path = dir.path().join("proxspace.state.json");
+    let mut value: serde_json::Value =
+        serde_json::to_value(installed_state(r"C:\ProxSpace")).unwrap();
+    // No build ever wrote format 0, so no rung leads out of it; a real older
+    // format gets one, and this stays the shape of the failure when it does not.
+    value["schema"] = serde_json::json!(0);
+    fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+
+    let loaded = State::load(&path);
+    assert_eq!(loaded.state.stage, Stage::NotInstalled);
+    assert_eq!(loaded.migrated_from, None);
+    assert!(
+        loaded
+            .warning
+            .as_deref()
+            .is_some_and(|w| w.contains("older state format 0")),
+        "unexpected warning: {:?}",
+        loaded.warning
+    );
+}
+
+#[test]
+fn a_state_file_without_a_format_is_reported_and_started_over() {
+    let dir = base();
+    let path = dir.path().join("proxspace.state.json");
+    let mut value: serde_json::Value =
+        serde_json::to_value(installed_state(r"C:\ProxSpace")).unwrap();
+    value.as_object_mut().unwrap().remove("schema");
+    fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
+
+    let loaded = State::load(&path);
+    assert_eq!(loaded.state.stage, Stage::NotInstalled);
+    assert!(
+        loaded
+            .warning
+            .as_deref()
+            .is_some_and(|w| w.contains("does not say which state format")),
+        "unexpected warning: {:?}",
+        loaded.warning
+    );
+}
+
+#[test]
+fn a_file_in_the_current_format_is_not_migrated() {
+    let dir = base();
+    let path = dir.path().join("proxspace.state.json");
+    installed_state(r"C:\ProxSpace").save(&path).unwrap();
+
+    let loaded = State::load(&path);
+    assert_eq!(loaded.migrated_from, None);
+    assert!(loaded.warning.is_none());
+}
+
+#[test]
 fn a_state_file_from_a_newer_binary_is_not_silently_discarded() {
     let dir = base();
     let path = dir.path().join("proxspace.state.json");

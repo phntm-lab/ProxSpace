@@ -23,6 +23,8 @@
 //! - [`preflight`] — checks run before the environment is touched
 //! - [`mirrors`] — which servers pacman downloads from, and in what order
 //! - [`install`] — the pipeline that puts all of it together
+//! - [`update`] — bringing an installed environment forward to this build
+//! - [`release`] — whether a newer ProxSpace has been published
 //! - [`clean`] — undoing that, without touching anything the user made
 //! - [`info`] — what the finished environment turned out to be
 //! - [`state`] — the install pipeline and its persisted state
@@ -48,8 +50,10 @@ pub mod packages;
 pub mod pacman;
 pub mod paths;
 pub mod preflight;
+pub mod release;
 pub mod state;
 pub mod ui;
+pub mod update;
 
 /// Version of this binary, as recorded in the state file and reported by `info`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

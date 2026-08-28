@@ -30,9 +30,27 @@ use crate::paths::Paths;
 use crate::state::{Msys2Info, Stage, State, StateError, timestamp};
 use crate::ui::Ui;
 
-/// Datestamp of the base archive this build installs.
+/// Datestamp of the base archive this build installs, in the `YYYYMMDD` form
+/// upstream names its archives with.
+///
+/// This is the version an installed tree is compared against, so bumping msys2
+/// is a matter of editing this block — and only this block — as a unit:
+///
+/// 1. Pick the newest `msys2-base-x86_64-<datestamp>.tar.xz` from
+///    <https://repo.msys2.org/distrib/x86_64/> and put its datestamp here.
+/// 2. Point [`MSYS2_URL`] at that file.
+/// 3. Download it, hash it, and put the hash in [`MSYS2_SHA256`], following the
+///    note there about cross-checking a second mirror.
+/// 4. Leave [`MSYS2_MIN_COMPATIBLE`] where it is unless the new runtime cannot
+///    be reached from the old ones by `pacman -Syuu`.
+///
+/// Versions are ordered by comparing these strings, which works only while the
+/// datestamp form holds; the tests below check the constants against each other
+/// and against that form.
 pub const MSYS2_VERSION: &str = "20260611";
 
+/// Where the archive for [`MSYS2_VERSION`] is downloaded from. The file name is
+/// parsed back out of this URL, so it has to keep the upstream name.
 pub const MSYS2_URL: &str =
     "https://mirror.msys2.org/distrib/x86_64/msys2-base-x86_64-20260611.tar.xz";
 
@@ -160,8 +178,9 @@ pub fn ensure_tree(
             "the state file says msys2 is installed, but `{}` is not there; installing it again",
             tree.display()
         ));
-        state.msys2 = None;
-        state.move_to(Stage::NotInstalled)?;
+        // Whatever the state recorded described the tree that is gone: the
+        // packages in it and the python extras added to it went with it.
+        state.forget_msys2()?;
         state.save(&state_file)?;
     }
 
@@ -583,6 +602,14 @@ mod tests {
             ArchiveSource::msys2().file_name(),
             format!("msys2-base-x86_64-{MSYS2_VERSION}.tar.xz")
         );
+        for version in [MSYS2_VERSION, MSYS2_MIN_COMPATIBLE] {
+            assert_eq!(
+                version.len(),
+                8,
+                "versions are compared as strings, so they must all be datestamps"
+            );
+            assert!(version.bytes().all(|byte| byte.is_ascii_digit()));
+        }
         assert_eq!(MSYS2_SHA256.len(), 64);
         assert!(MSYS2_SHA256.bytes().all(|byte| byte.is_ascii_hexdigit()));
         assert!(

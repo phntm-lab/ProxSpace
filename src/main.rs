@@ -13,15 +13,16 @@ use proxspace::cli::{Cli, Command, EXIT_NOT_IMPLEMENTED, MirrorsAction};
 use proxspace::command::ProcessRunner;
 use proxspace::http::UreqClient;
 use proxspace::info;
-use proxspace::install::{self, Plan};
+use proxspace::install::{self, Plan, Reinstall};
 use proxspace::interrupt::{self, EXIT_INTERRUPTED};
 use proxspace::logging::{Level, Logger};
 use proxspace::mirrors;
 use proxspace::msys2::shell;
 use proxspace::paths::Paths;
 use proxspace::preflight;
-use proxspace::state::State;
+use proxspace::state::{SCHEMA_VERSION, State};
 use proxspace::ui::{self, Ui, UiOptions};
+use proxspace::update::{self, Options, Outcome};
 
 fn main() -> ExitCode {
     // `Cli::parse` exits by itself on `--help`, `--version` and usage errors,
@@ -101,6 +102,11 @@ fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
     if let Some(warning) = &loaded.warning {
         ui.warn(warning);
     }
+    if let Some(from) = loaded.migrated_from {
+        ui.info(&format!(
+            "state file brought forward from format {from} to {SCHEMA_VERSION}"
+        ));
+    }
     let mut state = loaded.state;
     ui.detail(&format!("install state: {}", state.stage));
 
@@ -169,6 +175,42 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Res
             Ready::Interrupted => Ok(EXIT_INTERRUPTED),
             Ready::Yes => Ok(shell::exec(paths, command)?),
         },
+        // Two halves that are asked for together by default: the msys2 tree
+        // itself, and the package list this build ships. `--check` prints what
+        // each of them would do and touches nothing.
+        Command::Update {
+            msys2,
+            packages,
+            check,
+            reinstall_msys2,
+            no_reinstall,
+        } => {
+            let options = Options {
+                msys2: *msys2,
+                packages: *packages,
+                check: *check,
+                reinstall: Reinstall::from_flags(*reinstall_msys2, *no_reinstall),
+            };
+            match update::run(
+                &UreqClient::new(),
+                &ProcessRunner,
+                ui,
+                paths,
+                state,
+                &Plan::shipped(paths)?,
+                &options,
+            ) {
+                Ok(Outcome::Done | Outcome::Checked) => Ok(0),
+                // As with an install: what finished is in the state file, and
+                // the next run carries on from there.
+                Err(error) if interrupt::requested() => {
+                    ui.detail(&format!("stopped: {error}"));
+                    Ok(EXIT_INTERRUPTED)
+                }
+                Err(error) => Err(error.into()),
+            }
+        }
+
         // Not part of the install automaton: the tree is already there and
         // wrong, so the pipeline that decides what is missing is exactly the
         // wrong tool. Everything installed goes back over itself instead.

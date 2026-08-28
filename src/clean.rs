@@ -21,7 +21,7 @@ use crate::msys2::procs::{self, ProcsError};
 use crate::msys2::{ArchiveSource, procs::Stopped};
 use crate::pacman::{Pacman, PacmanError};
 use crate::paths::Paths;
-use crate::state::{Stage, State, StateError};
+use crate::state::{State, StateError};
 use crate::ui::{Ui, UiError};
 
 /// How much to remove.
@@ -106,10 +106,7 @@ pub fn all(ui: &Ui, paths: &Paths, state: &mut State) -> Result<(), CleanError> 
     archive::remove_tree(&tree)?;
     discard_leftover_archive(ui, paths);
 
-    state.msys2 = None;
-    state.packages = None;
-    state.pip_extras_installed = false;
-    state.move_to(Stage::NotInstalled)?;
+    state.forget_msys2()?;
     state.save(&paths.state_file())?;
 
     ui.success("the environment is gone; run ProxSpace again to install it afresh");
@@ -151,6 +148,7 @@ mod tests {
     use super::*;
     use crate::command::{Cmd, CommandError, Output};
     use crate::logging::Logger;
+    use crate::state::Stage;
     use crate::ui::UiOptions;
 
     fn ui(assume_yes: bool) -> Ui {

@@ -19,9 +19,56 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Format version of the state file. Bumping it requires a migration step;
-/// older files are refused rather than silently misread.
+/// Format version of the state file. Bumping it requires a matching rung in
+/// [`MIGRATIONS`]; files that cannot be brought forward are refused rather than
+/// silently misread.
 pub const SCHEMA_VERSION: u32 = 1;
+
+/// One rung of the migration ladder: it rewrites a state file written with
+/// schema `from` into the shape schema `from + 1` reads.
+///
+/// Rungs work on raw JSON rather than on [`State`], because the old shape is by
+/// definition no longer the shape [`State`] deserialises. Setting the `schema`
+/// field is not a rung's job — [`climb`] does that after each successful step.
+struct Migration {
+    from: u32,
+    apply: fn(&mut serde_json::Value) -> Result<(), String>,
+}
+
+/// The ladder, in order, one rung per bump of [`SCHEMA_VERSION`]: adding a
+/// field with its default, renaming one, dropping one. A rung is what keeps an
+/// existing install from being thrown away and reinstalled after a format
+/// change, so a bump without one is a mistake — `the_ladder_is_unbroken`
+/// catches it.
+///
+/// Empty while schema 1 is the only format that has ever been written.
+const MIGRATIONS: &[Migration] = &[];
+
+/// Bring raw state JSON from schema `from` up to schema `to`, one rung at a
+/// time. `to` is a parameter rather than [`SCHEMA_VERSION`] so the climb can be
+/// exercised over a ladder that is not the shipped one.
+fn climb(
+    value: &mut serde_json::Value,
+    from: u32,
+    to: u32,
+    ladder: &[Migration],
+) -> Result<(), String> {
+    if !value.is_object() {
+        return Err("the file does not contain a JSON object".to_string());
+    }
+
+    let mut schema = from;
+    while schema < to {
+        let rung = ladder
+            .iter()
+            .find(|migration| migration.from == schema)
+            .ok_or_else(|| format!("this build knows no way forward from format {schema}"))?;
+        (rung.apply)(value).map_err(|reason| format!("format {schema}: {reason}"))?;
+        schema += 1;
+        value["schema"] = serde_json::json!(schema);
+    }
+    Ok(())
+}
 
 /// Steps of the install pipeline, in the order they are performed.
 ///
@@ -166,6 +213,23 @@ pub struct LoadOutcome {
     pub state: State,
     /// Set when the file existed but could not be used as-is.
     pub warning: Option<String>,
+    /// Format the file was written in, when it had to be brought forward to
+    /// the current one. The upgraded state is not written back here; whichever
+    /// command saves next stores it in the new format, and until then the file
+    /// stays readable by the build that wrote it.
+    pub migrated_from: Option<u32>,
+}
+
+impl LoadOutcome {
+    /// A file that cannot be used: every install step is idempotent, so
+    /// starting over is always safe, but the reason must not be swallowed.
+    fn fresh(warning: String) -> LoadOutcome {
+        LoadOutcome {
+            state: State::default(),
+            warning: Some(warning),
+            migrated_from: None,
+        }
+    }
 }
 
 impl State {
@@ -176,51 +240,88 @@ impl State {
                 return LoadOutcome {
                     state: State::default(),
                     warning: None,
+                    migrated_from: None,
                 };
             }
             Err(error) => {
-                return LoadOutcome {
-                    state: State::default(),
-                    warning: Some(format!(
-                        "cannot read `{}` ({error}); assuming a fresh install",
-                        path.display()
-                    )),
-                };
+                return LoadOutcome::fresh(format!(
+                    "cannot read `{}` ({error}); assuming a fresh install",
+                    path.display()
+                ));
             }
         };
 
-        match serde_json::from_str::<State>(&text) {
-            Ok(state) if state.schema == SCHEMA_VERSION => LoadOutcome {
-                state,
-                warning: None,
-            },
-            Ok(state) if state.schema > SCHEMA_VERSION => LoadOutcome {
-                warning: Some(format!(
-                    "`{}` was written by a newer ProxSpace (state format {}, this build understands {}); \
-                     starting from scratch would delete a working install, so nothing is assumed — \
-                     use a matching ProxSpace build",
-                    path.display(),
-                    state.schema,
-                    SCHEMA_VERSION
-                )),
-                state,
-            },
-            Ok(state) => LoadOutcome {
-                warning: Some(format!(
-                    "`{}` uses the older state format {} and no migration exists yet; \
-                     assuming a fresh install",
-                    path.display(),
-                    state.schema
-                )),
-                state: State::default(),
-            },
-            Err(error) => LoadOutcome {
-                state: State::default(),
-                warning: Some(format!(
+        // Read the format before the contents: an older file is not expected to
+        // deserialise into the current `State` at all, and a newer one may well
+        // not either.
+        let mut value = match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(value) => value,
+            Err(error) => {
+                return LoadOutcome::fresh(format!(
                     "`{}` is not valid state JSON ({error}); assuming a fresh install",
                     path.display()
-                )),
+                ));
+            }
+        };
+
+        let schema = match value.get("schema").and_then(serde_json::Value::as_u64) {
+            Some(schema) => u32::try_from(schema).unwrap_or(u32::MAX),
+            None => {
+                return LoadOutcome::fresh(format!(
+                    "`{}` does not say which state format it is in; assuming a fresh install",
+                    path.display()
+                ));
+            }
+        };
+
+        if schema > SCHEMA_VERSION {
+            let warning = format!(
+                "`{}` was written by a newer ProxSpace (state format {schema}, this build \
+                 understands {SCHEMA_VERSION}); starting from scratch would delete a working \
+                 install, so nothing is assumed — use a matching ProxSpace build",
+                path.display()
+            );
+            // Keeping whatever of it can be read beats reporting a working
+            // install as absent.
+            return match serde_json::from_value::<State>(value) {
+                Ok(state) => LoadOutcome {
+                    state,
+                    warning: Some(warning),
+                    migrated_from: None,
+                },
+                Err(_) => LoadOutcome::fresh(warning),
+            };
+        }
+
+        let mut migrated_from = None;
+        if schema < SCHEMA_VERSION {
+            if let Err(reason) = climb(&mut value, schema, SCHEMA_VERSION, MIGRATIONS) {
+                return LoadOutcome::fresh(format!(
+                    "`{}` is in the older state format {schema} and cannot be brought forward \
+                     ({reason}); assuming a fresh install",
+                    path.display()
+                ));
+            }
+            migrated_from = Some(schema);
+        }
+
+        match serde_json::from_value::<State>(value) {
+            Ok(state) => LoadOutcome {
+                state,
+                warning: None,
+                migrated_from,
             },
+            Err(error) => LoadOutcome::fresh(match migrated_from {
+                Some(from) => format!(
+                    "`{}` was brought forward from state format {from} into something this build \
+                     cannot read ({error}); assuming a fresh install",
+                    path.display()
+                ),
+                None => format!(
+                    "`{}` is not valid state JSON ({error}); assuming a fresh install",
+                    path.display()
+                ),
+            }),
         }
     }
 
@@ -258,6 +359,20 @@ impl State {
         }
         self.stage = target;
         Ok(())
+    }
+
+    /// Forget everything that described an msys2 tree that is no longer on
+    /// disk, and walk the pipeline back to the beginning.
+    ///
+    /// Everything recorded here is about the contents of that tree — which
+    /// packages went in, whether the python extras were added — so a tree that
+    /// has been deleted takes all of it with it. Saving is left to the caller,
+    /// which usually has more to record in the same write.
+    pub fn forget_msys2(&mut self) -> Result<(), StateError> {
+        self.msys2 = None;
+        self.packages = None;
+        self.pip_extras_installed = false;
+        self.move_to(Stage::NotInstalled)
     }
 
     /// True when the environment was installed somewhere else and the folder
@@ -334,6 +449,105 @@ mod tests {
         }
     }
 
+    /// A ladder is only useful if it has no gaps: every format from the oldest
+    /// rung up to the current one must have a way forward.
+    #[test]
+    fn the_ladder_is_unbroken() {
+        let Some(first) = MIGRATIONS.first() else {
+            return;
+        };
+        for (offset, rung) in MIGRATIONS.iter().enumerate() {
+            assert_eq!(
+                rung.from,
+                first.from + offset as u32,
+                "the migration ladder skips a state format"
+            );
+        }
+        assert_eq!(
+            MIGRATIONS.last().map(|rung| rung.from + 1),
+            Some(SCHEMA_VERSION),
+            "the migration ladder does not reach the current state format"
+        );
+    }
+
+    #[test]
+    fn climbing_applies_every_rung_in_order_and_stamps_the_schema() {
+        let ladder = [
+            Migration {
+                from: 1,
+                apply: |value| {
+                    value["added"] = serde_json::json!("by the first rung");
+                    Ok(())
+                },
+            },
+            Migration {
+                from: 2,
+                apply: |value| {
+                    let old = value["added"].as_str().unwrap_or_default().to_string();
+                    value["added"] = serde_json::json!(format!("{old}, then the second"));
+                    Ok(())
+                },
+            },
+        ];
+
+        let mut value = serde_json::json!({ "schema": 1 });
+        climb(&mut value, 1, 3, &ladder).unwrap();
+
+        assert_eq!(value["schema"], serde_json::json!(3));
+        assert_eq!(value["added"], "by the first rung, then the second");
+    }
+
+    #[test]
+    fn climbing_nowhere_changes_nothing() {
+        let mut value = serde_json::json!({ "schema": 1, "stage": "Ready" });
+        let before = value.clone();
+        climb(&mut value, 1, 1, &[]).unwrap();
+        assert_eq!(value, before);
+    }
+
+    #[test]
+    fn a_missing_rung_stops_the_climb_where_it_stands() {
+        let ladder = [Migration {
+            from: 1,
+            apply: |value| {
+                value["reached"] = serde_json::json!(2);
+                Ok(())
+            },
+        }];
+
+        let mut value = serde_json::json!({ "schema": 1 });
+        let reason = climb(&mut value, 1, 4, &ladder).unwrap_err();
+
+        assert!(reason.contains("from format 2"), "unexpected: {reason}");
+        // The rungs that did run are not undone; the file is discarded whole.
+        assert_eq!(value["schema"], serde_json::json!(2));
+    }
+
+    #[test]
+    fn a_failing_rung_names_the_format_it_failed_on() {
+        let ladder = [
+            Migration {
+                from: 1,
+                apply: |_| Ok(()),
+            },
+            Migration {
+                from: 2,
+                apply: |_| Err("the field is not a string".to_string()),
+            },
+        ];
+
+        let mut value = serde_json::json!({ "schema": 1 });
+        let reason = climb(&mut value, 1, 3, &ladder).unwrap_err();
+
+        assert_eq!(reason, "format 2: the field is not a string");
+    }
+
+    #[test]
+    fn climbing_refuses_json_that_is_not_an_object() {
+        let mut value = serde_json::json!([1, 2, 3]);
+        assert!(climb(&mut value, 1, 2, &[]).is_err());
+    }
+
     #[test]
     fn round_trips_through_json() {
         let state = populated();
@@ -399,6 +613,19 @@ mod tests {
         let mut state = populated();
         state.move_to(Stage::Ready).unwrap();
         assert_eq!(state.stage, Stage::Ready);
+    }
+
+    #[test]
+    fn forgetting_the_tree_forgets_what_was_in_it() {
+        let mut state = populated();
+        state.forget_msys2().unwrap();
+
+        assert_eq!(state.stage, Stage::NotInstalled);
+        assert_eq!(state.msys2, None);
+        assert_eq!(state.packages, None);
+        assert!(!state.pip_extras_installed);
+        // Where it is installed is about the folder, not about the tree.
+        assert_eq!(state.install_path.as_deref(), Some(r"C:\ProxSpace"));
     }
 
     #[test]
