@@ -290,3 +290,20 @@ fn every_decision_says_something_the_user_can_read() {
         );
     }
 }
+
+/// `--reinstall-msys2` on an up-to-date tree reaches the same row as a version
+/// too old to upgrade, and must not borrow its explanation: the tree is going
+/// because it was asked to go, not because of its version.
+#[test]
+fn a_reinstall_at_the_same_version_does_not_call_it_too_old() {
+    let update = decide_update(Some(SHIPPED), SHIPPED, MIN, Reinstall::Always);
+    let summary = update.summary();
+    assert!(
+        !summary.contains("too old"),
+        "a forced reinstall explains itself by the version: {summary}"
+    );
+    assert!(
+        summary.contains("same version"),
+        "a forced reinstall does not say the version is unchanged: {summary}"
+    );
+}

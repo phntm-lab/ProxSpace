@@ -283,6 +283,13 @@ pub fn rebase(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths) -> Result<(), 
         &Cmd::new(&dash)
             .arg("/usr/bin/rebaseall")
             .arg("-p")
+            // `rebaseall` reads `uname -s` to decide which base address the
+            // DLLs may be moved to, and `uname` answers from `MSYSTEM`. A
+            // `MSYSTEM` inherited from the shell ProxSpace was started in —
+            // `MINGW64` in a Git Bash, say — makes it read the tree as a mingw
+            // one and keep the 32-bit default address, which `rebase` then
+            // refuses outright. The tree is an msys2 one whoever asks.
+            .env("MSYSTEM", "MSYS")
             .label("rebasing the msys2 DLLs")
             .quiet(),
     );

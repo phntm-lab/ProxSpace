@@ -9,8 +9,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use proxspace::app::provision;
 use proxspace::core::msys2::ArchiveSource;
@@ -18,6 +18,7 @@ use proxspace::core::paths::Paths;
 use proxspace::core::state::{Stage, State};
 use proxspace::infra::msys2::archive::{self as msys2_archive, Msys2Error};
 use proxspace::infra::state as state_file;
+use proxspace::ports::command::{Cmd, CommandError, CommandRunner, Output};
 use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
@@ -297,4 +298,54 @@ fn an_archive_left_next_to_a_finished_install_is_cleaned_up() {
 
     assert!(!sandbox.archive().exists());
     assert_eq!(client.calls(), 1);
+}
+
+/// A `dash` that records the command it was asked to run.
+struct RecordingRunner {
+    calls: Mutex<Vec<Cmd>>,
+}
+
+impl RecordingRunner {
+    fn new() -> RecordingRunner {
+        RecordingRunner {
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl CommandRunner for RecordingRunner {
+    fn run(&self, _ui: &Ui, cmd: &Cmd) -> Result<Output, CommandError> {
+        self.calls.lock().unwrap().push(cmd.clone());
+        Ok(Output::new(Some(0), "", "", cmd.describe()))
+    }
+}
+
+/// `rebaseall` asks `uname -s` which platform this is, and `uname` answers from
+/// `MSYSTEM`. Inherited from a Git Bash it says `MINGW64`, the script keeps the
+/// 32-bit default base address, and `rebase` refuses it — so the command says
+/// what the tree is rather than letting the caller's shell decide.
+#[test]
+fn the_rebase_is_told_it_is_working_on_an_msys2_tree() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
+    fs::create_dir_all(paths.msys2().join("usr/bin")).unwrap();
+    fs::write(
+        paths.msys2().join("usr/bin/dash.exe"),
+        b"not really a program",
+    )
+    .unwrap();
+
+    let runner = RecordingRunner::new();
+    provision::rebase(&runner, &silent_ui(), &paths).unwrap();
+
+    let calls = runner.calls.lock().unwrap();
+    let rebase = calls.last().expect("nothing was run");
+    assert!(
+        rebase
+            .env
+            .iter()
+            .any(|(key, value)| key == "MSYSTEM" && value == "MSYS"),
+        "the rebase inherits whatever MSYSTEM the caller had: {:?}",
+        rebase.env
+    );
 }

@@ -90,6 +90,15 @@ impl Update {
                 "msys2 {from} will be brought up to {to} in place with `pacman -Syuu`; \
                  nothing in the tree is deleted"
             ),
+            // The same row is reached two ways: because the installed version
+            // is beyond in-place upgrading, and because `--reinstall-msys2`
+            // asked for the tree to go. Only the first is about the version,
+            // and saying it about the second reads as nonsense: "20260611 is
+            // too old to be upgraded to 20260611".
+            Update::Reinstall { from, to } if from == to => format!(
+                "msys2 {from} will be deleted and installed afresh at the same version, \
+                 and every package with it"
+            ),
             Update::Reinstall { from, to } => format!(
                 "msys2 {from} is too old to be upgraded to {to} in place: the `msys2` folder will be \
                  deleted and installed afresh, and every package with it"

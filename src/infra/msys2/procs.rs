@@ -35,8 +35,8 @@ pub enum ProcsError {
     Ui(#[from] UiError),
     #[error(transparent)]
     Interrupted(#[from] Interrupted),
-    #[error("cancelled: {0} still using the msys2 tree")]
-    Refused(String),
+    #[error("cancelled: {summary} {verb} still using the msys2 tree")]
+    Refused { summary: String, verb: &'static str },
     #[error(
         "{summary} could not be stopped and {verb} still using the msys2 tree\n  \
          close the window it belongs to, or end it in Task Manager, and run this again"
@@ -218,15 +218,22 @@ pub fn stop_holders(tree: &Path, ui: &Ui) -> Result<Stopped, ProcsError> {
     }
 
     ui.warn(&format!(
-        "{} using the msys2 tree and must be stopped first:",
-        summarise(&ours)
+        "{} {} using the msys2 tree and must be stopped first:",
+        summarise(&ours),
+        verb_for(ours.len())
     ));
+    // The warning above ends in a colon, so the list it promises has to be on
+    // screen and not only in the log: without it the user is told a number and
+    // asked to act on it.
     for holder in &ours {
-        ui.detail(&format!("  {}", holder.describe()));
+        ui.info(&format!("  {}", holder.describe()));
     }
 
     if !ui.confirm("Stop them?", true)? {
-        return Err(ProcsError::Refused(summarise(&ours)));
+        return Err(ProcsError::Refused {
+            summary: summarise(&ours),
+            verb: verb_for(ours.len()),
+        });
     }
 
     kill(&ours);
@@ -291,11 +298,13 @@ fn wait_until_gone(tree: &Path, ui: &Ui) -> Result<(), ProcsError> {
     }
 }
 
-/// "1 process" / "3 processes", so the messages read as sentences.
+/// "1 process" / "3 processes". The verb belongs to the sentence around it —
+/// baking it in here reads well in one message and turns the next one into
+/// "stopped 3 processes are".
 fn summarise(holders: &[Holder]) -> String {
     match holders.len() {
-        1 => "1 process is".to_string(),
-        count => format!("{count} processes are"),
+        1 => "1 process".to_string(),
+        count => format!("{count} processes"),
     }
 }
 
@@ -426,8 +435,36 @@ mod tests {
         };
         assert!(theirs.describe().ends_with(", another user)"));
 
-        assert_eq!(summarise(std::slice::from_ref(&holder)), "1 process is");
-        assert_eq!(summarise(&[holder.clone(), holder]), "2 processes are");
+        // The count carries no verb of its own: every message supplies the one
+        // its own sentence needs, and one that came baked in turned the next
+        // message into "stopped 2 processes are".
+        let one = [holder.clone()];
+        assert_eq!(summarise(&one), "1 process");
+        assert_eq!(verb_for(one.len()), "is");
+        let two = [holder.clone(), holder];
+        assert_eq!(summarise(&two), "2 processes");
+        assert_eq!(verb_for(two.len()), "are");
+        assert_eq!(
+            format!("stopped {}", summarise(&two)),
+            "stopped 2 processes"
+        );
+
+        assert_eq!(
+            ProcsError::Refused {
+                summary: summarise(&one),
+                verb: verb_for(one.len()),
+            }
+            .to_string(),
+            "cancelled: 1 process is still using the msys2 tree"
+        );
+        assert!(
+            ProcsError::StillRunning {
+                summary: summarise(&two),
+                verb: verb_for(two.len()),
+            }
+            .to_string()
+            .starts_with("2 processes could not be stopped and are still using the msys2 tree")
+        );
     }
 
     #[test]
