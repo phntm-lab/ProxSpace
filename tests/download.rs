@@ -20,8 +20,9 @@ use std::thread::JoinHandle;
 
 use proxspace::core::msys2;
 use proxspace::infra::download::{self, DownloadError};
+use proxspace::infra::http::UreqClient;
 use proxspace::infra::msys2::archive as msys2_archive;
-use proxspace::ports::http::{HttpClient, HttpError, Request, UreqClient};
+use proxspace::ports::http::{HttpClient, HttpError, Request};
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 

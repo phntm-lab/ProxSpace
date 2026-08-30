@@ -13,7 +13,7 @@ use std::sync::Arc;
 use proxspace::app::provision::{self, PrepareError};
 use proxspace::core::fstab::Mounts;
 use proxspace::core::paths::Paths;
-use proxspace::ports::command::ProcessRunner;
+use proxspace::infra::process::ProcessRunner;
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 

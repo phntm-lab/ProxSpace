@@ -231,7 +231,7 @@ mod tests {
     fn a_missing_tool_names_the_file_that_is_missing() {
         let dir = tempfile::tempdir().unwrap();
         let error = install(
-            &crate::ports::command::ProcessRunner,
+            &crate::infra::process::ProcessRunner,
             &silent_ui(),
             dir.path(),
         )
