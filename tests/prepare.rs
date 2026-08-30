@@ -10,11 +10,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use proxspace::command::ProcessRunner;
-use proxspace::logging::Logger;
-use proxspace::msys2::fstab::Mounts;
-use proxspace::msys2::{self, PrepareError};
-use proxspace::paths::Paths;
+use proxspace::core::paths::Paths;
+use proxspace::infra::msys2::fstab::Mounts;
+use proxspace::infra::msys2::{self, PrepareError};
+use proxspace::ports::command::ProcessRunner;
+use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 
 /// Real `mkpasswd -c` / `mkgroup -c` output, with the account renamed.

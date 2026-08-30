@@ -21,8 +21,8 @@ use tar::Archive;
 use thiserror::Error;
 use xz2::read::XzDecoder;
 
-use crate::interrupt::{self, Interrupted};
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// Suffix of the directory the archive is unpacked into before it is renamed
 /// into place.

@@ -22,8 +22,8 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::command::{Cmd, CommandError, CommandRunner};
-use crate::msys2;
+use crate::infra::msys2;
+use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ui::Ui;
 
 pub const PASSWD_PATH: &str = "etc/passwd";
@@ -296,7 +296,7 @@ mod tests {
                 quiet: true,
                 ..crate::ui::UiOptions::default()
             },
-            Arc::new(crate::logging::Logger::disabled()),
+            Arc::new(crate::ui::logging::Logger::disabled()),
         )
     }
 
@@ -435,7 +435,12 @@ mod tests {
     #[test]
     fn a_missing_tool_names_the_file_that_is_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let error = install(&crate::command::ProcessRunner, &silent_ui(), dir.path()).unwrap_err();
+        let error = install(
+            &crate::ports::command::ProcessRunner,
+            &silent_ui(),
+            dir.path(),
+        )
+        .unwrap_err();
 
         assert!(matches!(error, UserDbError::ToolMissing { .. }));
         assert!(error.to_string().contains("mkpasswd.exe"));

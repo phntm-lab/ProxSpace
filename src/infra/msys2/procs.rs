@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use thiserror::Error;
 
-use crate::interrupt::{self, Interrupted};
+use crate::ui::interrupt::{self, Interrupted};
 use crate::ui::{Ui, UiError};
 
 /// How long to keep looking after asking the processes to die. Termination is
@@ -489,7 +489,7 @@ mod tests {
                 assume_yes: true,
                 ..crate::ui::UiOptions::default()
             },
-            Arc::new(crate::logging::Logger::disabled()),
+            Arc::new(crate::ui::logging::Logger::disabled()),
         );
         let stopped = stop_holders(&tree, &ui).unwrap();
 

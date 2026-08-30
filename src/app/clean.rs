@@ -14,14 +14,14 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::archive::{self, ExtractError};
-use crate::command::CommandRunner;
-use crate::download;
-use crate::msys2::procs::{self, ProcsError};
-use crate::msys2::{ArchiveSource, procs::Stopped};
-use crate::pacman::{Cache, Pacman, PacmanError};
-use crate::paths::Paths;
-use crate::state::{State, StateError};
+use crate::core::paths::Paths;
+use crate::core::state::{State, StateError};
+use crate::infra::archive::{self, ExtractError};
+use crate::infra::download;
+use crate::infra::msys2::procs::{self, ProcsError};
+use crate::infra::msys2::{ArchiveSource, procs::Stopped};
+use crate::infra::pacman::{Cache, Pacman, PacmanError};
+use crate::ports::command::CommandRunner;
 use crate::ui::{Ui, UiError};
 
 /// How much to remove.
@@ -146,10 +146,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::command::{Cmd, CommandError, Output};
-    use crate::logging::Logger;
-    use crate::state::Stage;
+    use crate::core::state::Stage;
+    use crate::ports::command::{Cmd, CommandError, Output};
     use crate::ui::UiOptions;
+    use crate::ui::logging::Logger;
 
     fn ui(assume_yes: bool) -> Ui {
         Ui::new(

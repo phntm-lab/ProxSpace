@@ -12,11 +12,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use proxspace::http::{HttpClient, HttpError, Request, Response};
-use proxspace::logging::Logger;
-use proxspace::msys2::{self, ArchiveSource, Msys2Error};
-use proxspace::paths::Paths;
-use proxspace::state::{Stage, State};
+use proxspace::core::paths::Paths;
+use proxspace::core::state::{Stage, State};
+use proxspace::infra::msys2::{self, ArchiveSource, Msys2Error};
+use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
+use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 
 const FIXTURE: &str = "tests/fixtures/mini-msys2.tar.xz";

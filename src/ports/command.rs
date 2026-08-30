@@ -27,8 +27,8 @@ use std::process::{self, Stdio};
 
 use thiserror::Error;
 
-use crate::interrupt::{self, Interrupted};
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// How much of the failing output an error message carries. Enough to show the
 /// `error:` line pacman ends with, not so much that the message becomes a log.
@@ -395,7 +395,7 @@ fn pump(stream: Option<impl Read>, ui: &Ui, echo: Echo) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logging::Logger;
+    use crate::ui::logging::Logger;
     use crate::ui::{Ui, UiOptions};
     use std::sync::Arc;
 

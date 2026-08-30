@@ -37,15 +37,15 @@ pub const AUTOBUILD_PATH: &str = "opt/proxspace/autobuild.sh";
 /// Templates that script copies into every archive it packs.
 pub const AUTOBUILD_ASSET_DIR: &str = "opt/proxspace/autobuild";
 
-const HOOK: &str = include_str!("../assets/09-proxspace_setup.post");
-const NSSWITCH: &str = include_str!("../assets/nsswitch.conf");
-const PM3_WRAPPER: &str = include_str!("../assets/bin/pm3-wrapper");
-const PS_SHIM: &str = include_str!("../assets/bin/ps-shim");
-const AUTOBUILD: &str = include_str!("../assets/autobuild.sh");
+const HOOK: &str = include_str!("../../assets/09-proxspace_setup.post");
+const NSSWITCH: &str = include_str!("../../assets/nsswitch.conf");
+const PM3_WRAPPER: &str = include_str!("../../assets/bin/pm3-wrapper");
+const PS_SHIM: &str = include_str!("../../assets/bin/ps-shim");
+const AUTOBUILD: &str = include_str!("../../assets/autobuild.sh");
 
 /// The package set, as shipped. Parsed by `packages.rs`; written into the tree
 /// unchanged so that what was installed can be read back from the tree itself.
-pub const PACKAGES: &str = include_str!("../assets/packages.txt");
+pub const PACKAGES: &str = include_str!("../../assets/packages.txt");
 
 /// Placeholder in the login hook, replaced with this build's version.
 const VERSION_PLACEHOLDER: &str = "@PSVERSION@";
@@ -83,52 +83,52 @@ const AUTOBUILD_TEMPLATES: &[(&str, &str, &str)] = &[
     (
         "opt/proxspace/autobuild/official",
         "Go.bat",
-        include_str!("../assets/autobuild/official/Go.bat"),
+        include_str!("../../assets/autobuild/official/Go.bat"),
     ),
     (
         "opt/proxspace/autobuild/official",
         "FLASH - All.bat",
-        include_str!("../assets/autobuild/official/FLASH - All.bat"),
+        include_str!("../../assets/autobuild/official/FLASH - All.bat"),
     ),
     (
         "opt/proxspace/autobuild/official",
         "FLASH - Bootrom.bat",
-        include_str!("../assets/autobuild/official/FLASH - Bootrom.bat"),
+        include_str!("../../assets/autobuild/official/FLASH - Bootrom.bat"),
     ),
     (
         "opt/proxspace/autobuild/official",
         "FLASH - fullimage.bat",
-        include_str!("../assets/autobuild/official/FLASH - fullimage.bat"),
+        include_str!("../../assets/autobuild/official/FLASH - fullimage.bat"),
     ),
     (
         "opt/proxspace/autobuild/official/client",
         "setup.bat",
-        include_str!("../assets/autobuild/official/client/setup.bat"),
+        include_str!("../../assets/autobuild/official/client/setup.bat"),
     ),
     (
         "opt/proxspace/autobuild/rrg",
         "pm3.bat",
-        include_str!("../assets/autobuild/rrg/pm3.bat"),
+        include_str!("../../assets/autobuild/rrg/pm3.bat"),
     ),
     (
         "opt/proxspace/autobuild/rrg",
         "pm3-flash-all.bat",
-        include_str!("../assets/autobuild/rrg/pm3-flash-all.bat"),
+        include_str!("../../assets/autobuild/rrg/pm3-flash-all.bat"),
     ),
     (
         "opt/proxspace/autobuild/rrg",
         "pm3-flash-bootrom.bat",
-        include_str!("../assets/autobuild/rrg/pm3-flash-bootrom.bat"),
+        include_str!("../../assets/autobuild/rrg/pm3-flash-bootrom.bat"),
     ),
     (
         "opt/proxspace/autobuild/rrg",
         "pm3-flash-fullimage.bat",
-        include_str!("../assets/autobuild/rrg/pm3-flash-fullimage.bat"),
+        include_str!("../../assets/autobuild/rrg/pm3-flash-fullimage.bat"),
     ),
     (
         "opt/proxspace/autobuild/rrg/client",
         "setup.bat",
-        include_str!("../assets/autobuild/rrg/client/setup.bat"),
+        include_str!("../../assets/autobuild/rrg/client/setup.bat"),
     ),
 ];
 
@@ -373,7 +373,7 @@ mod tests {
                 quiet: true,
                 ..crate::ui::UiOptions::default()
             },
-            Arc::new(crate::logging::Logger::disabled()),
+            Arc::new(crate::ui::logging::Logger::disabled()),
         )
     }
 
@@ -499,7 +499,7 @@ mod tests {
         );
         assert!(script.contents.contains(&format!(
             "[ \"$MSYSTEM\" != \"{}\" ]",
-            crate::msys2::MSYSTEM
+            crate::infra::msys2::MSYSTEM
         )));
         // The DLLs beside the client and the Qt plugin must come from the same
         // prefix the client was linked against, or the archive fails on the

@@ -17,18 +17,18 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::archive::{self, ExtractError};
-use crate::assets::{self, AssetError};
-use crate::command::{Cmd, CommandError, CommandRunner};
-use crate::download::{self, DownloadError};
-use crate::http::HttpClient;
-use crate::interrupt::{self, Interrupted};
-use crate::msys2::fstab::FstabError;
-use crate::msys2::procs::ProcsError;
-use crate::msys2::userdb::UserDbError;
-use crate::paths::Paths;
-use crate::state::{Msys2Info, Stage, State, StateError, timestamp};
+use crate::core::assets::{self, AssetError};
+use crate::core::paths::Paths;
+use crate::core::state::{Msys2Info, Stage, State, StateError, timestamp};
+use crate::infra::archive::{self, ExtractError};
+use crate::infra::download::{self, DownloadError};
+use crate::infra::msys2::fstab::FstabError;
+use crate::infra::msys2::procs::ProcsError;
+use crate::infra::msys2::userdb::UserDbError;
+use crate::ports::command::{Cmd, CommandError, CommandRunner};
+use crate::ports::http::HttpClient;
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// Datestamp of the base archive this build installs, in the `YYYYMMDD` form
 /// upstream names its archives with.
@@ -594,7 +594,7 @@ mod tests {
                 quiet: true,
                 ..crate::ui::UiOptions::default()
             },
-            std::sync::Arc::new(crate::logging::Logger::disabled()),
+            std::sync::Arc::new(crate::ui::logging::Logger::disabled()),
         )
     }
 

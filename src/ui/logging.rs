@@ -108,7 +108,7 @@ impl Logger {
             return;
         };
 
-        let stamp = crate::state::timestamp();
+        let stamp = crate::core::state::timestamp();
         for line in message.lines() {
             // A write failure here (disk full, file deleted underneath us) is
             // deliberately swallowed: losing the log must not abort the work

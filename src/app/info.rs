@@ -18,12 +18,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::command::{Cmd, CommandRunner};
-use crate::msys2::shell;
-use crate::packages::PackageList;
-use crate::pacman::Pacman;
-use crate::paths::Paths;
-use crate::state::{State, timestamp};
+use crate::core::packages::PackageList;
+use crate::core::paths::Paths;
+use crate::core::state::{State, timestamp};
+use crate::infra::msys2::shell;
+use crate::infra::pacman::Pacman;
+use crate::ports::command::{Cmd, CommandRunner};
 use crate::ui::Ui;
 
 /// The tools the report gives a version for, and how each one is asked.
@@ -348,10 +348,10 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::command::{CommandError, Output};
-    use crate::logging::Logger;
-    use crate::state::Stage;
+    use crate::core::state::Stage;
+    use crate::ports::command::{CommandError, Output};
     use crate::ui::UiOptions;
+    use crate::ui::logging::Logger;
 
     fn silent_ui() -> Ui {
         Ui::new(

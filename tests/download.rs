@@ -18,10 +18,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
-use proxspace::download::{self, DownloadError};
-use proxspace::http::{HttpClient, HttpError, Request, UreqClient};
-use proxspace::logging::Logger;
-use proxspace::msys2;
+use proxspace::infra::download::{self, DownloadError};
+use proxspace::infra::msys2;
+use proxspace::ports::http::{HttpClient, HttpError, Request, UreqClient};
+use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 
 /// Body big enough to take several 64 KiB chunks, so a truncated transfer is a

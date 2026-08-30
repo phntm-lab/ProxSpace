@@ -22,9 +22,9 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::http::{HttpClient, HttpError, Request};
-use crate::interrupt::{self, Interrupted};
+use crate::ports::http::{HttpClient, HttpError, Request};
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// Read size. Large enough that the syscall overhead disappears against a fast
 /// link, small enough that Ctrl+C is noticed promptly — the interrupt flag is

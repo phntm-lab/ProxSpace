@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::paths::Paths;
+use crate::core::paths::Paths;
 use crate::ui::Ui;
 
 /// Location inside the msys2 tree.
@@ -155,8 +155,8 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    const BASIC: &str = include_str!("../../tests/fixtures/fstab-basic");
-    const WITH_BUILDS: &str = include_str!("../../tests/fixtures/fstab-with-builds");
+    const BASIC: &str = include_str!("../../../tests/fixtures/fstab-basic");
+    const WITH_BUILDS: &str = include_str!("../../../tests/fixtures/fstab-with-builds");
 
     fn silent_ui() -> Ui {
         Ui::new(
@@ -164,7 +164,7 @@ mod tests {
                 quiet: true,
                 ..crate::ui::UiOptions::default()
             },
-            Arc::new(crate::logging::Logger::disabled()),
+            Arc::new(crate::ui::logging::Logger::disabled()),
         )
     }
 

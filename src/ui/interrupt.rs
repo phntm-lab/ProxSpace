@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use thiserror::Error;
 
-use crate::logging::{Level, Logger};
+use crate::ui::logging::{Level, Logger};
 
 /// Exit code for a run stopped by Ctrl+C — the shell convention of 128 + SIGINT.
 pub const EXIT_INTERRUPTED: i32 = 130;

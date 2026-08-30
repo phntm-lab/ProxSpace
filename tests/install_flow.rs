@@ -14,17 +14,17 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use proxspace::command::{Cmd, CommandError, CommandRunner, Output};
-use proxspace::http::{HttpClient, HttpError, Request, Response};
-use proxspace::install::{self, InstallError, Plan, Reinstall};
-use proxspace::logging::Logger;
-use proxspace::msys2::{ArchiveSource, fstab::Mounts};
-use proxspace::packages::{PackageList, split_package_file};
-use proxspace::pacman;
-use proxspace::paths::Paths;
-use proxspace::state::{Msys2Info, Stage, State};
+use proxspace::app::install::{self, InstallError, Plan, Reinstall};
+use proxspace::app::update::{self, Options, Outcome, UpdateError};
+use proxspace::core::packages::{PackageList, split_package_file};
+use proxspace::core::paths::Paths;
+use proxspace::core::state::{Msys2Info, Stage, State};
+use proxspace::infra::msys2::{ArchiveSource, fstab::Mounts};
+use proxspace::infra::pacman;
+use proxspace::ports::command::{Cmd, CommandError, CommandRunner, Output};
+use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
+use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
-use proxspace::update::{self, Options, Outcome, UpdateError};
 
 /// Real `mkpasswd -c` / `mkgroup -c` output, with the account renamed.
 const MKPASSWD: &str = "somebody:unused:1197603:1049089:\
@@ -254,7 +254,7 @@ fn unpacked() -> (tempfile::TempDir, Paths, State) {
 fn plan(paths: &Paths, force: bool) -> Plan {
     Plan {
         source: ArchiveSource::msys2(),
-        min_compatible: proxspace::msys2::MSYS2_MIN_COMPATIBLE.to_string(),
+        min_compatible: proxspace::infra::msys2::MSYS2_MIN_COMPATIBLE.to_string(),
         list: list(),
         mounts: Mounts::for_paths(paths),
         force,

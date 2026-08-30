@@ -23,12 +23,12 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::command::{Cmd, CommandError, CommandRunner};
-use crate::interrupt::{self, Interrupted};
-use crate::msys2::{self, shell};
-use crate::pacman::{Mode, Pacman, PacmanError};
-use crate::paths::Paths;
+use crate::core::paths::Paths;
+use crate::infra::msys2::{self, shell};
+use crate::infra::pacman::{Mode, Pacman, PacmanError};
+use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// Where pacman keeps the mirror lists, inside the tree.
 pub const MIRRORLIST_DIR: &str = "etc/pacman.d";
@@ -281,10 +281,10 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::command::Output;
-    use crate::logging::Logger;
-    use crate::msys2::MSYSTEM;
+    use crate::infra::msys2::MSYSTEM;
+    use crate::ports::command::Output;
     use crate::ui::UiOptions;
+    use crate::ui::logging::Logger;
 
     const SHIPPED: &str = "# See https://www.msys2.org/dev/mirrors\n\
          Server = https://mirror.msys2.org/msys/$arch/\n\

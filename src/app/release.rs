@@ -16,7 +16,7 @@ use std::io::Read;
 use serde::Deserialize;
 
 use crate::VERSION;
-use crate::http::{HttpClient, Request};
+use crate::ports::http::{HttpClient, Request};
 use crate::ui::Ui;
 
 /// The unauthenticated releases endpoint. It excludes pre-releases and drafts,
@@ -112,7 +112,7 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::http::{HttpError, Response};
+    use crate::ports::http::{HttpError, Response};
 
     /// Answers with a fixed body, or refuses to answer at all.
     struct FakeGitHub(Result<String, ()>);

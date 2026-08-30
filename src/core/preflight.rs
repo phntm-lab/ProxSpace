@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::paths::Paths;
+use crate::core::paths::Paths;
 
 /// Below this the install is refused: msys2 plus the ProxSpace package set,
 /// the pacman download cache and one proxmark3 build tree do not fit.

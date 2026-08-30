@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 
 use clap::CommandFactory;
-use proxspace::cli::Cli;
+use proxspace::cli::args::Cli;
 
 const ENGLISH: &str = include_str!("../README.md");
 const RUSSIAN: &str = include_str!("../README_RU.md");

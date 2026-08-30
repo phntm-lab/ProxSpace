@@ -127,7 +127,7 @@ impl PackageList {
     /// because the failure mode of a wrong list is an install that stops with a
     /// message, not a binary that dies.
     pub fn shipped() -> Result<PackageList, PackagesError> {
-        PackageList::parse(crate::assets::PACKAGES)
+        PackageList::parse(crate::core::assets::PACKAGES)
     }
 
     /// Read a package list.

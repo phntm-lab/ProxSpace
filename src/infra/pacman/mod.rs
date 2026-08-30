@@ -26,10 +26,10 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::command::{Cmd, CommandError, CommandRunner, Output};
-use crate::msys2;
-use crate::msys2::procs;
-use crate::packages::{PackageList, PkgSpec};
+use crate::core::packages::{PackageList, PkgSpec};
+use crate::infra::msys2;
+use crate::infra::msys2::procs;
+use crate::ports::command::{Cmd, CommandError, CommandRunner, Output};
 use crate::ui::Ui;
 
 /// Where pacman lives inside the tree.
@@ -735,7 +735,7 @@ fn count(number: usize, noun: &str) -> String {
 mod tests {
     use super::*;
 
-    const REAL_CONF: &str = include_str!("../tests/fixtures/pacman.conf");
+    const REAL_CONF: &str = include_str!("../../../tests/fixtures/pacman.conf");
     const PIN: &str = "mingw-w64-ucrt-x86_64-arm-none-eabi-binutils";
 
     fn conf_path() -> PathBuf {

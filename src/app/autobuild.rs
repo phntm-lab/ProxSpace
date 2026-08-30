@@ -18,14 +18,14 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::assets::AUTOBUILD_PATH;
-use crate::command::CommandRunner;
-use crate::interrupt::{self, Interrupted};
-use crate::msys2::fstab::{self, FstabError, Mounts};
-use crate::msys2::shell::{self, ShellError};
-use crate::pacman::{Mode, Pacman, PacmanError};
-use crate::paths::Paths;
+use crate::core::assets::AUTOBUILD_PATH;
+use crate::core::paths::Paths;
+use crate::infra::msys2::fstab::{self, FstabError, Mounts};
+use crate::infra::msys2::shell::{self, ShellError};
+use crate::infra::pacman::{Mode, Pacman, PacmanError};
+use crate::ports::command::CommandRunner;
 use crate::ui::Ui;
+use crate::ui::interrupt::{self, Interrupted};
 
 /// Where `7z` comes from. Installed on demand rather than shipped in the
 /// package set, as the original did: it is of no use to anyone who never runs
@@ -234,8 +234,8 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    use crate::command::{Cmd, CommandError, Output};
-    use crate::msys2::fstab::FSTAB_PATH;
+    use crate::infra::msys2::fstab::FSTAB_PATH;
+    use crate::ports::command::{Cmd, CommandError, Output};
 
     fn silent_ui() -> Ui {
         Ui::new(
@@ -243,7 +243,7 @@ mod tests {
                 quiet: true,
                 ..crate::ui::UiOptions::default()
             },
-            Arc::new(crate::logging::Logger::disabled()),
+            Arc::new(crate::ui::logging::Logger::disabled()),
         )
     }
 
@@ -293,7 +293,7 @@ mod tests {
     fn the_script_is_run_from_where_it_is_installed() {
         assert_eq!(script_command(), "/opt/proxspace/autobuild.sh");
         assert!(
-            crate::assets::assets()
+            crate::core::assets::assets()
                 .iter()
                 .any(|asset| asset.destination(Path::new("root"))
                     == Path::new("root").join(AUTOBUILD_PATH)),
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn an_empty_home_directory_stops_before_anything_is_changed() {
         let (_dir, paths) = environment();
-        crate::assets::install(&paths.msys2(), &silent_ui()).unwrap();
+        crate::core::assets::install(&paths.msys2(), &silent_ui()).unwrap();
         fs::create_dir_all(paths.pm3()).unwrap();
         let fake = Fake::with("");
 

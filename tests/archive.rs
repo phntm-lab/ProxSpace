@@ -12,8 +12,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use proxspace::archive::{self, ExtractError};
-use proxspace::logging::Logger;
+use proxspace::infra::archive::{self, ExtractError};
+use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
 
 const FIXTURE: &str = "tests/fixtures/mini-msys2.tar.xz";

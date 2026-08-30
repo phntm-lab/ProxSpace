@@ -217,7 +217,7 @@ mod tests {
 
         assert!(!text.starts_with(EXTENDED_PREFIX), "not stripped: {text}");
         assert!(
-            crate::preflight::validate_install_path(&text).is_ok(),
+            crate::core::preflight::validate_install_path(&text).is_ok(),
             "rejected: {text}"
         );
     }

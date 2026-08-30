@@ -29,18 +29,18 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::archive::{self, ExtractError};
-use crate::command::{Cmd, CommandError, CommandRunner};
-use crate::http::HttpClient;
-use crate::interrupt::Interrupted;
-use crate::msys2::procs::{self, ProcsError};
-use crate::msys2::shell::BASH;
-use crate::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
-use crate::packages::{PackageList, PackagesError, PkgSpec};
-use crate::pacman::{Cache, Mode, Pacman, PacmanError};
-use crate::paths::Paths;
-use crate::state::{PackagesInfo, Stage, State, StateError, timestamp};
+use crate::core::packages::{PackageList, PackagesError, PkgSpec};
+use crate::core::paths::Paths;
+use crate::core::state::{PackagesInfo, Stage, State, StateError, timestamp};
+use crate::infra::archive::{self, ExtractError};
+use crate::infra::msys2::procs::{self, ProcsError};
+use crate::infra::msys2::shell::BASH;
+use crate::infra::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
+use crate::infra::pacman::{Cache, Mode, Pacman, PacmanError};
+use crate::ports::command::{Cmd, CommandError, CommandRunner};
+use crate::ports::http::HttpClient;
 use crate::ui::Ui;
+use crate::ui::interrupt::Interrupted;
 
 /// The UCRT64 python, which is the one the proxmark3 client runs under.
 const PYTHON: &str = "ucrt64/bin/python.exe";

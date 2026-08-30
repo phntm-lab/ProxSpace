@@ -19,7 +19,7 @@
 //! device and prompts for input, and a build watched through a pipe would lose
 //! its progress output.
 //!
-//! [`CommandRunner`]: crate::command::CommandRunner
+//! [`CommandRunner`]: crate::ports::command::CommandRunner
 
 use std::ffi::OsString;
 use std::fs;
@@ -29,9 +29,9 @@ use std::process;
 
 use thiserror::Error;
 
-use crate::interrupt;
-use crate::msys2::MSYSTEM;
-use crate::paths::Paths;
+use crate::core::paths::Paths;
+use crate::infra::msys2::MSYSTEM;
+use crate::ui::interrupt;
 
 /// The login shell, relative to the root of the msys2 tree.
 pub const BASH: &str = "usr/bin/bash.exe";

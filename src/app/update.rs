@@ -18,12 +18,12 @@
 
 use thiserror::Error;
 
-use crate::command::CommandRunner;
-use crate::http::HttpClient;
-use crate::install::{self, InstallError, Plan, Reinstall, Update};
-use crate::paths::Paths;
-use crate::release;
-use crate::state::State;
+use crate::app::install::{self, InstallError, Plan, Reinstall, Update};
+use crate::app::release;
+use crate::core::paths::Paths;
+use crate::core::state::State;
+use crate::ports::command::CommandRunner;
+use crate::ports::http::HttpClient;
 use crate::ui::Ui;
 
 #[derive(Debug, Error)]

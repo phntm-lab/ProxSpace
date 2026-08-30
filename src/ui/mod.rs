@@ -9,6 +9,9 @@
 //! output of a command such as `info` — suppressing those would turn a quiet
 //! run into a silent failure.
 
+pub mod interrupt;
+pub mod logging;
+
 use std::io::Write;
 use std::sync::Arc;
 
@@ -16,8 +19,8 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use thiserror::Error;
 
-use crate::interrupt::{self, Interrupted};
-use crate::logging::{Level, Logger};
+use crate::ui::interrupt::Interrupted;
+use crate::ui::logging::{Level, Logger};
 
 #[derive(Debug, Error)]
 pub enum UiError {

@@ -11,8 +11,8 @@
 use std::io::{Cursor, Read};
 
 use proxspace::VERSION;
-use proxspace::http::{HttpClient, HttpError, Request, Response};
-use proxspace::release;
+use proxspace::app::release;
+use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
 
 const WORKFLOW: &str = include_str!("../.github/workflows/release.yml");
 const CHANGELOG: &str = include_str!("../CHANGELOG.md");

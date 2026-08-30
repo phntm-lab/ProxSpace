@@ -6,7 +6,7 @@
 
 use std::fs;
 
-use proxspace::state::{Msys2Info, PackagesInfo, SCHEMA_VERSION, Stage, State, timestamp};
+use proxspace::core::state::{Msys2Info, PackagesInfo, SCHEMA_VERSION, Stage, State, timestamp};
 use tempfile::TempDir;
 
 fn base() -> TempDir {
