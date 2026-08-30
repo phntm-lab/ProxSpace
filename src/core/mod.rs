@@ -9,3 +9,5 @@ pub mod packages;
 pub mod paths;
 pub mod preflight;
 pub mod state;
+pub mod update;
+pub mod versions;

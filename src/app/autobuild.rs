@@ -283,7 +283,7 @@ mod tests {
     /// A base directory with just enough of a tree for pacman to be callable.
     fn environment() -> (tempfile::TempDir, Paths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
         fs::create_dir_all(paths.msys2().join("usr/bin")).unwrap();
         fs::write(paths.msys2().join("usr/bin/pacman.exe"), b"pacman").unwrap();
         (dir, paths)
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn the_script_is_told_where_to_put_the_archives() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         let args = script_args(&paths, &silent_ui());
 
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn an_empty_home_directory_stops_before_anything_is_changed() {
         let (_dir, paths) = environment();
-        crate::core::assets::install(&paths.msys2(), &silent_ui()).unwrap();
+        crate::infra::assets::install(&paths.msys2(), &silent_ui()).unwrap();
         fs::create_dir_all(paths.pm3()).unwrap();
         let fake = Fake::with("");
 

@@ -7,6 +7,7 @@
 use std::fs;
 
 use proxspace::core::state::{Msys2Info, PackagesInfo, SCHEMA_VERSION, Stage, State, timestamp};
+use proxspace::infra::state as state_file;
 use tempfile::TempDir;
 
 fn base() -> TempDir {
@@ -37,7 +38,7 @@ fn installed_state(install_path: &str) -> State {
 #[test]
 fn a_missing_file_reads_as_a_fresh_install() {
     let dir = base();
-    let loaded = State::load(&dir.path().join("proxspace.state.json"));
+    let loaded = state_file::load(&dir.path().join("proxspace.state.json"));
 
     assert_eq!(loaded.state.stage, Stage::NotInstalled);
     // Nothing went wrong, so nothing should be reported to the user.
@@ -50,8 +51,8 @@ fn what_is_written_is_what_is_read_back() {
     let path = dir.path().join("proxspace.state.json");
     let state = installed_state(r"C:\ProxSpace");
 
-    state.save(&path).unwrap();
-    let loaded = State::load(&path);
+    state_file::save(&state, &path).unwrap();
+    let loaded = state_file::load(&path);
 
     assert!(loaded.warning.is_none());
     assert_eq!(loaded.state, state);
@@ -61,7 +62,7 @@ fn what_is_written_is_what_is_read_back() {
 fn saving_leaves_no_temporary_file_behind() {
     let dir = base();
     let path = dir.path().join("proxspace.state.json");
-    installed_state(r"C:\ProxSpace").save(&path).unwrap();
+    state_file::save(&installed_state(r"C:\ProxSpace"), &path).unwrap();
 
     let leftovers: Vec<_> = fs::read_dir(dir.path())
         .unwrap()
@@ -75,10 +76,10 @@ fn a_second_save_replaces_the_first() {
     let dir = base();
     let path = dir.path().join("proxspace.state.json");
 
-    installed_state(r"C:\First").save(&path).unwrap();
-    installed_state(r"C:\Second").save(&path).unwrap();
+    state_file::save(&installed_state(r"C:\First"), &path).unwrap();
+    state_file::save(&installed_state(r"C:\Second"), &path).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.state.install_path.as_deref(), Some(r"C:\Second"));
 }
 
@@ -88,7 +89,7 @@ fn garbage_is_reported_and_treated_as_a_fresh_install() {
     let path = dir.path().join("proxspace.state.json");
     fs::write(&path, "{ not json at all").unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.state.stage, Stage::NotInstalled);
     assert!(
         loaded
@@ -107,7 +108,7 @@ fn a_truncated_file_is_reported_and_treated_as_a_fresh_install() {
     let full = serde_json::to_string_pretty(&installed_state(r"C:\ProxSpace")).unwrap();
     fs::write(&path, &full[..full.len() / 2]).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.state.stage, Stage::NotInstalled);
     assert!(loaded.warning.is_some());
 }
@@ -123,7 +124,7 @@ fn a_state_file_in_an_unreachable_older_format_is_reported_and_started_over() {
     value["schema"] = serde_json::json!(0);
     fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.state.stage, Stage::NotInstalled);
     assert_eq!(loaded.migrated_from, None);
     assert!(
@@ -145,7 +146,7 @@ fn a_state_file_without_a_format_is_reported_and_started_over() {
     value.as_object_mut().unwrap().remove("schema");
     fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.state.stage, Stage::NotInstalled);
     assert!(
         loaded
@@ -161,9 +162,9 @@ fn a_state_file_without_a_format_is_reported_and_started_over() {
 fn a_file_in_the_current_format_is_not_migrated() {
     let dir = base();
     let path = dir.path().join("proxspace.state.json");
-    installed_state(r"C:\ProxSpace").save(&path).unwrap();
+    state_file::save(&installed_state(r"C:\ProxSpace"), &path).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert_eq!(loaded.migrated_from, None);
     assert!(loaded.warning.is_none());
 }
@@ -177,7 +178,7 @@ fn a_state_file_from_a_newer_binary_is_not_silently_discarded() {
     value["schema"] = serde_json::json!(SCHEMA_VERSION + 1);
     fs::write(&path, serde_json::to_string(&value).unwrap()).unwrap();
 
-    let loaded = State::load(&path);
+    let loaded = state_file::load(&path);
     assert!(
         loaded
             .warning
@@ -198,18 +199,18 @@ fn an_interrupted_install_resumes_from_the_last_completed_step() {
     // First run gets as far as unpacking the archive, then dies.
     let mut state = State::default();
     state.move_to(Stage::Downloaded).unwrap();
-    state.save(&path).unwrap();
+    state_file::save(&state, &path).unwrap();
     state.move_to(Stage::Extracted).unwrap();
-    state.save(&path).unwrap();
+    state_file::save(&state, &path).unwrap();
 
     // Second run picks the pipeline up where it stopped.
-    let mut resumed = State::load(&path).state;
+    let mut resumed = state_file::load(&path).state;
     assert_eq!(resumed.stage, Stage::Extracted);
     assert_eq!(resumed.stage.next(), Some(Stage::Bootstrapped));
 
     resumed.move_to(Stage::Bootstrapped).unwrap();
-    resumed.save(&path).unwrap();
-    assert_eq!(State::load(&path).state.stage, Stage::Bootstrapped);
+    state_file::save(&resumed, &path).unwrap();
+    assert_eq!(state_file::load(&path).state.stage, Stage::Bootstrapped);
 }
 
 #[test]
@@ -219,20 +220,26 @@ fn a_wipe_resets_the_pipeline_to_the_beginning() {
     let mut state = installed_state(r"C:\ProxSpace");
 
     state.move_to(Stage::NotInstalled).unwrap();
-    state.save(&path).unwrap();
+    state_file::save(&state, &path).unwrap();
 
-    assert_eq!(State::load(&path).state.stage, Stage::NotInstalled);
+    assert_eq!(state_file::load(&path).state.stage, Stage::NotInstalled);
 }
 
 #[test]
 fn a_moved_installation_is_detected_across_a_save() {
     let dir = base();
     let path = dir.path().join("proxspace.state.json");
-    installed_state(r"C:\ProxSpace").save(&path).unwrap();
+    state_file::save(&installed_state(r"C:\ProxSpace"), &path).unwrap();
 
-    let state = State::load(&path).state;
-    assert!(state.was_moved_from(std::path::Path::new(r"D:\Somewhere\Else")));
-    assert!(!state.was_moved_from(std::path::Path::new(r"C:\ProxSpace")));
+    let state = state_file::load(&path).state;
+    assert!(state_file::was_moved_from(
+        &state,
+        std::path::Path::new(r"D:\Somewhere\Else")
+    ));
+    assert!(!state_file::was_moved_from(
+        &state,
+        std::path::Path::new(r"C:\ProxSpace")
+    ));
 }
 
 #[test]
@@ -241,7 +248,7 @@ fn the_file_is_readable_json() {
     // so it is pretty-printed rather than minified.
     let dir = base();
     let path = dir.path().join("proxspace.state.json");
-    installed_state(r"C:\ProxSpace").save(&path).unwrap();
+    state_file::save(&installed_state(r"C:\ProxSpace"), &path).unwrap();
 
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.contains('\n'), "state file should be pretty-printed");

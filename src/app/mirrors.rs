@@ -334,7 +334,7 @@ mod tests {
     /// A tree with both mirror lists and the tools the ranking needs.
     fn tree() -> (tempfile::TempDir, Paths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
         let tree = paths.msys2();
 
         fs::create_dir_all(tree.join(MIRRORLIST_DIR)).unwrap();
@@ -478,7 +478,7 @@ mod tests {
     #[test]
     fn a_tree_that_is_not_there_is_named_rather_than_stumbled_over() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         assert!(matches!(
             restore(&silent_ui(), &paths),

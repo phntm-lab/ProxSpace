@@ -18,10 +18,12 @@
 
 use thiserror::Error;
 
-use crate::app::install::{self, InstallError, Plan, Reinstall, Update};
+use crate::app::install::{self, InstallError, Plan};
 use crate::app::release;
 use crate::core::paths::Paths;
 use crate::core::state::State;
+use crate::core::update::{Reinstall, Update};
+use crate::infra::state as state_file;
 use crate::ports::command::CommandRunner;
 use crate::ports::http::HttpClient;
 use crate::ui::Ui;
@@ -158,9 +160,7 @@ fn record_version(
         return Ok(());
     };
     info.version = version.to_string();
-    state
-        .save(&paths.state_file())
-        .map_err(InstallError::from)?;
+    state_file::save(state, &paths.state_file()).map_err(InstallError::from)?;
     ui.detail(&format!("the tree is recorded as msys2 {version}"));
     Ok(())
 }

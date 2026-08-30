@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn the_shell_starts_in_pm3() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         assert_eq!(working_dir(&paths), paths.pm3());
         assert!(paths.pm3().is_dir(), "the home directory must be created");
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn a_tree_without_a_shell_says_so_instead_of_failing_to_spawn() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         let error = run(&paths, &[]).unwrap_err();
         assert!(matches!(error, ShellError::ShellMissing { .. }));

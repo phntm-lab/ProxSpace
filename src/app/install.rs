@@ -32,11 +32,13 @@ use thiserror::Error;
 use crate::core::packages::{PackageList, PackagesError, PkgSpec};
 use crate::core::paths::Paths;
 use crate::core::state::{PackagesInfo, Stage, State, StateError, timestamp};
+use crate::core::update::{Reinstall, Update, decide_update};
 use crate::infra::archive::{self, ExtractError};
 use crate::infra::msys2::procs::{self, ProcsError};
 use crate::infra::msys2::shell::BASH;
 use crate::infra::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
 use crate::infra::pacman::{Cache, Mode, Pacman, PacmanError};
+use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ports::http::HttpClient;
 use crate::ui::Ui;
@@ -157,7 +159,7 @@ impl Env<'_> {
     /// file is entirely in it being current when the process dies.
     fn record(&self, state: &mut State, stage: Stage) -> Result<(), InstallError> {
         state.move_to(stage)?;
-        state.save(&self.paths.state_file())?;
+        state_file::save(state, &self.paths.state_file())?;
         Ok(())
     }
 }
@@ -318,7 +320,7 @@ fn batches<'a>(names: &[&'a str]) -> Vec<Vec<&'a str>> {
 /// Returns whether they do.
 fn settle_move(env: &Env<'_>, state: &mut State) -> Result<bool, InstallError> {
     let current = env.paths.base();
-    if !state.was_moved_from(current) {
+    if !state_file::was_moved_from(state, current) {
         return Ok(false);
     }
     let recorded = state.install_path.clone().unwrap_or_default();
@@ -353,7 +355,7 @@ fn settle_move(env: &Env<'_>, state: &mut State) -> Result<bool, InstallError> {
     };
 
     state.install_path = Some(current.to_string_lossy().into_owned());
-    state.save(&env.paths.state_file())?;
+    state_file::save(state, &env.paths.state_file())?;
     Ok(reinstall)
 }
 
@@ -634,7 +636,7 @@ fn finish(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
             .check()?;
 
         state.pip_extras_installed = true;
-        state.save(&env.paths.state_file())?;
+        state_file::save(state, &env.paths.state_file())?;
     }
 
     if state.stage < Stage::Ready {
@@ -780,105 +782,10 @@ pub fn reinstall_msys2(
     // removal and the first step of the install must not leave a state file
     // describing a tree that is no longer there.
     state.forget_msys2()?;
-    state.save(&paths.state_file())?;
+    state_file::save(state, &paths.state_file())?;
     ui.detail("the old tree is gone; `pm3` and `builds` were left alone");
 
     ensure_ready(http, runner, ui, paths, state, plan)
-}
-
-/// Manual control over the one step that destroys something.
-///
-/// Without either flag the matrix decides on its own. The flags exist because
-/// both of its answers can be the wrong one for somebody: a tree at the right
-/// version can still be beyond repair, and a reinstall the matrix thinks is
-/// warranted is the last thing a user on a slow connection wants to discover
-/// after typing `update`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Reinstall {
-    /// No flag given: the versions decide.
-    #[default]
-    WhenNeeded,
-    /// `--reinstall-msys2`: replace the tree whatever the versions say.
-    Always,
-    /// `--no-reinstall`: never replace the tree; report instead.
-    Never,
-}
-
-impl Reinstall {
-    /// What the two flags mean together. They cannot both be given — clap
-    /// refuses that — so the fourth combination never arrives.
-    pub fn from_flags(always: bool, never: bool) -> Reinstall {
-        match (always, never) {
-            (true, _) => Reinstall::Always,
-            (_, true) => Reinstall::Never,
-            _ => Reinstall::WhenNeeded,
-        }
-    }
-}
-
-/// What has to happen to the msys2 tree for it to be the one this build
-/// expects.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Update {
-    /// There is no tree to update.
-    Install,
-    /// The tree is already the version this build ships.
-    UpToDate { version: String },
-    /// The tree is newer than what this build ships, which means the binary was
-    /// replaced by an older one. Downgrading msys2 is not something pacman does
-    /// and not something worth inventing: the newer tree works.
-    Newer { installed: String, shipped: String },
-    /// Old enough to need updating, new enough for `pacman -Syuu` to do it.
-    Upgrade { from: String, to: String },
-    /// Too old for `pacman -Syuu` to get all the way: the tree goes and a fresh
-    /// one takes its place.
-    Reinstall { from: String, to: String },
-    /// The tree needs replacing and `--no-reinstall` forbids it. Nothing is
-    /// done, and the caller says why rather than doing half of it.
-    Blocked { from: String, to: String },
-}
-
-impl Update {
-    /// Whether nothing at all can be done. Only a refused reinstall gets here:
-    /// every other row has at least an in-place upgrade to run.
-    pub fn is_blocked(&self) -> bool {
-        matches!(self, Update::Blocked { .. })
-    }
-
-    /// Whether it throws the tree away, which is what has to be agreed to
-    /// before it happens.
-    pub fn destroys_the_tree(&self) -> bool {
-        matches!(self, Update::Reinstall { .. })
-    }
-
-    /// What the user is told is about to happen, in one line.
-    pub fn summary(&self) -> String {
-        match self {
-            Update::Install => {
-                "msys2 is not installed here; it will be downloaded and set up".to_string()
-            }
-            Update::UpToDate { version } => format!(
-                "msys2 {version} is the version this ProxSpace ships; \
-                 everything installed in it will be brought up to date in place"
-            ),
-            Update::Newer { installed, shipped } => format!(
-                "this tree holds msys2 {installed}, newer than the {shipped} this ProxSpace ships — \
-                 it keeps its version, and everything installed in it is brought up to date"
-            ),
-            Update::Upgrade { from, to } => format!(
-                "msys2 {from} will be brought up to {to} in place with `pacman -Syuu`; \
-                 nothing in the tree is deleted"
-            ),
-            Update::Reinstall { from, to } => format!(
-                "msys2 {from} is too old to be upgraded to {to} in place: the `msys2` folder will be \
-                 deleted and installed afresh, and every package with it"
-            ),
-            Update::Blocked { from, to } => format!(
-                "msys2 {from} would have to be replaced to reach {to}, \
-                 which `--no-reinstall` forbids; nothing will be done"
-            ),
-        }
-    }
 }
 
 /// Decide what an update run does, from the state file and what is on disk.
@@ -896,56 +803,6 @@ pub fn plan_update(paths: &Paths, state: &State, plan: &Plan, reinstall: Reinsta
         &plan.min_compatible,
         reinstall,
     )
-}
-
-/// The decision itself, over nothing but version strings, so that every row of
-/// it can be checked without a five-gigabyte tree on disk.
-///
-/// `installed` is what the state file records, or `None` when there is no tree.
-/// Versions are msys2 datestamps and compare as strings; anything that is not a
-/// datestamp — a hand-edited or corrupted state file — is not ordered against
-/// the rest, and gets the upgrade, which is the one answer that cannot destroy
-/// a working tree.
-pub fn decide_update(
-    installed: Option<&str>,
-    shipped: &str,
-    min_compatible: &str,
-    reinstall: Reinstall,
-) -> Update {
-    let Some(installed) = installed else {
-        // Nothing to reinstall and nothing to refuse: either flag means the
-        // same thing here as no flag at all.
-        return Update::Install;
-    };
-    let (from, to) = (installed.to_string(), shipped.to_string());
-
-    if reinstall == Reinstall::Always {
-        return Update::Reinstall { from, to };
-    }
-    if !is_datestamp(installed) {
-        return Update::Upgrade { from, to };
-    }
-    if installed == shipped {
-        return Update::UpToDate { version: from };
-    }
-    if installed > shipped {
-        return Update::Newer {
-            installed: from,
-            shipped: to,
-        };
-    }
-    if installed >= min_compatible {
-        Update::Upgrade { from, to }
-    } else if reinstall == Reinstall::Never {
-        Update::Blocked { from, to }
-    } else {
-        Update::Reinstall { from, to }
-    }
-}
-
-/// A msys2 version as upstream writes them: eight digits, `YYYYMMDD`.
-fn is_datestamp(version: &str) -> bool {
-    version.len() == 8 && version.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// Show the plan, and get it agreed to when it destroys the tree.

@@ -21,6 +21,7 @@ use crate::infra::download;
 use crate::infra::msys2::procs::{self, ProcsError};
 use crate::infra::msys2::{ArchiveSource, procs::Stopped};
 use crate::infra::pacman::{Cache, Pacman, PacmanError};
+use crate::infra::state as state_file;
 use crate::ports::command::CommandRunner;
 use crate::ui::{Ui, UiError};
 
@@ -107,7 +108,7 @@ pub fn all(ui: &Ui, paths: &Paths, state: &mut State) -> Result<(), CleanError> 
     discard_leftover_archive(ui, paths);
 
     state.forget_msys2()?;
-    state.save(&paths.state_file())?;
+    state_file::save(state, &paths.state_file())?;
 
     ui.success("the environment is gone; run ProxSpace again to install it afresh");
     Ok(())
@@ -175,7 +176,7 @@ mod tests {
     /// finished state.
     fn installed() -> (tempfile::TempDir, Paths, State) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         fs::create_dir_all(paths.msys2().join("usr/bin")).unwrap();
         fs::write(paths.msys2().join("usr/bin/bash.exe"), b"tree").unwrap();
@@ -215,7 +216,7 @@ mod tests {
         assert!(state.packages.is_none());
         assert!(!state.pip_extras_installed);
         // Written out, not only changed in memory.
-        let saved = State::load(&paths.state_file()).state;
+        let saved = state_file::load(&paths.state_file()).state;
         assert_eq!(saved.stage, Stage::NotInstalled);
     }
 
@@ -247,7 +248,7 @@ mod tests {
     #[test]
     fn cleaning_a_directory_with_no_tree_says_so_and_runs_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
         let mut state = State::default();
 
         assert!(matches!(

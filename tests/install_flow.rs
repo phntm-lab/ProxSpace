@@ -14,13 +14,15 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use proxspace::app::install::{self, InstallError, Plan, Reinstall};
+use proxspace::app::install::{self, InstallError, Plan};
 use proxspace::app::update::{self, Options, Outcome, UpdateError};
 use proxspace::core::packages::{PackageList, split_package_file};
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Msys2Info, Stage, State};
+use proxspace::core::update::Reinstall;
 use proxspace::infra::msys2::{ArchiveSource, fstab::Mounts};
 use proxspace::infra::pacman;
+use proxspace::infra::state as state_file;
 use proxspace::ports::command::{Cmd, CommandError, CommandRunner, Output};
 use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
 use proxspace::ui::logging::Logger;
@@ -222,7 +224,7 @@ fn summarise(program: &str, args: &[String]) -> String {
 /// An installation with the msys2 tree unpacked and nothing done to it yet.
 fn unpacked() -> (tempfile::TempDir, Paths, State) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::from_dir(dir.path()).unwrap();
+    let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
     let tree = paths.msys2();
 
     fs::create_dir_all(tree.join("usr/bin")).unwrap();
@@ -678,7 +680,7 @@ fn a_full_reinstall_takes_the_tree_and_leaves_the_users_work() {
     }
 
     // Nothing left claiming an install that is not there.
-    let saved = State::load(&paths.state_file()).state;
+    let saved = state_file::load(&paths.state_file()).state;
     assert_eq!(saved.stage, Stage::NotInstalled);
     assert_eq!(saved.msys2, None);
     assert_eq!(saved.packages, None);
@@ -698,7 +700,7 @@ fn updatable(version: &str) -> (tempfile::TempDir, Paths, State, Fake) {
         sha256: "0".repeat(64),
         extracted_at: "2026-08-27T10:00:00Z".to_string(),
     });
-    state.save(&paths.state_file()).unwrap();
+    state_file::save(&state, &paths.state_file()).unwrap();
     fake.forget();
     (dir, paths, state, fake)
 }
@@ -763,7 +765,7 @@ fn an_upgrade_records_the_version_it_reached() {
     .unwrap();
 
     assert!(fake.ran("-Syuu"));
-    let saved = State::load(&paths.state_file()).state;
+    let saved = state_file::load(&paths.state_file()).state;
     assert_eq!(saved.msys2.expect("msys2 info").version, "20260611");
 }
 
@@ -783,7 +785,7 @@ fn a_tree_newer_than_the_binary_keeps_its_recorded_version() {
     .unwrap();
 
     assert!(fake.ran("-Syuu"));
-    let saved = State::load(&paths.state_file()).state;
+    let saved = state_file::load(&paths.state_file()).state;
     assert_eq!(saved.msys2.expect("msys2 info").version, "20270101");
 }
 
@@ -801,7 +803,7 @@ fn updating_only_the_packages_leaves_msys2_alone() {
     .unwrap();
 
     assert!(!fake.ran("-Syuu"), "msys2 was updated: {:?}", fake.calls());
-    let saved = State::load(&paths.state_file()).state;
+    let saved = state_file::load(&paths.state_file()).state;
     assert_eq!(saved.msys2.expect("msys2 info").version, "20260101");
 }
 
@@ -869,6 +871,6 @@ fn asking_for_a_reinstall_replaces_even_a_current_tree() {
 
     // The download is what fails; by then the old tree is already gone.
     assert!(!paths.msys2().exists());
-    let saved = State::load(&paths.state_file()).state;
+    let saved = state_file::load(&paths.state_file()).state;
     assert_eq!(saved.stage, Stage::NotInstalled);
 }

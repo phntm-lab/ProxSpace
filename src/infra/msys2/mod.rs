@@ -17,14 +17,16 @@ use std::path::{Path, PathBuf};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::core::assets::{self, AssetError};
 use crate::core::paths::Paths;
 use crate::core::state::{Msys2Info, Stage, State, StateError, timestamp};
+use crate::core::versions::file_name_of;
 use crate::infra::archive::{self, ExtractError};
+use crate::infra::assets::{self as asset_files, AssetError};
 use crate::infra::download::{self, DownloadError};
 use crate::infra::msys2::fstab::FstabError;
 use crate::infra::msys2::procs::ProcsError;
 use crate::infra::msys2::userdb::UserDbError;
+use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ports::http::HttpClient;
 use crate::ui::Ui;
@@ -165,7 +167,7 @@ pub fn ensure_tree(
     source: &ArchiveSource,
 ) -> Result<(), Msys2Error> {
     let tree = paths.msys2();
-    let state_file = paths.state_file();
+    let state_path = paths.state_file();
 
     if state.stage >= Stage::Extracted {
         if tree.is_dir() {
@@ -181,12 +183,12 @@ pub fn ensure_tree(
         // Whatever the state recorded described the tree that is gone: the
         // packages in it and the python extras added to it went with it.
         state.forget_msys2()?;
-        state.save(&state_file)?;
+        state_file::save(state, &state_path)?;
     }
 
     let archive = ensure_archive(client, ui, paths, source)?;
     state.move_to(Stage::Downloaded)?;
-    state.save(&state_file)?;
+    state_file::save(state, &state_path)?;
 
     // Anything at the destination now is the wreckage of an unpacking that
     // never finished — the state file would say `Extracted` otherwise.
@@ -213,7 +215,7 @@ pub fn ensure_tree(
     });
     state.install_path = Some(paths.base().to_string_lossy().into_owned());
     state.move_to(Stage::Extracted)?;
-    state.save(&state_file)?;
+    state_file::save(state, &state_path)?;
 
     discard_archive(ui, paths, source);
     ui.success(&format!("msys2 unpacked into `{}`", tree.display()));
@@ -337,28 +339,6 @@ fn to_hex(bytes: &[u8]) -> String {
     })
 }
 
-/// Last path segment of a URL, without any query string.
-fn file_name_of(url: &str) -> &str {
-    url.split(['?', '#'])
-        .next()
-        .unwrap_or(url)
-        .rsplit('/')
-        .next()
-        .unwrap_or(url)
-}
-
-/// Datestamp out of an archive name such as
-/// `msys2-base-x86_64-20260611.tar.xz`. Used to tell which base version a tree
-/// came from when the state file does not say.
-pub fn version_from_url(url: &str) -> Option<&str> {
-    let name = file_name_of(url);
-    let version = name
-        .strip_prefix("msys2-base-x86_64-")?
-        .strip_suffix(".tar.xz")?;
-    let is_datestamp = version.len() == 8 && version.bytes().all(|byte| byte.is_ascii_digit());
-    is_datestamp.then_some(version)
-}
-
 /// The msys2 subsystem ProxSpace runs in. It decides which prefix
 /// (`/ucrt64`) is on `$PATH` and which package set the environment is built
 /// from; the original used `MINGW64`, this port moved to UCRT64.
@@ -432,7 +412,7 @@ pub enum PrepareError {
 #[derive(Debug)]
 pub struct Prepared {
     pub directories: Vec<PathBuf>,
-    pub assets: assets::Report,
+    pub assets: asset_files::Report,
     pub fstab_changed: bool,
     pub userdb: userdb::Written,
 }
@@ -508,7 +488,7 @@ pub fn prepare_with_account(
         ui.detail(&format!("created `{}`", path.display()));
     }
 
-    let assets = assets::install(&tree, ui)?;
+    let assets = asset_files::install(&tree, ui)?;
     let fstab_changed = fstab::install(&tree, mounts, ui)?;
     let userdb = userdb::install_from(&tree, mkpasswd_output, mkgroup_output, ui)?;
 
@@ -588,6 +568,8 @@ pub fn rebase(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths) -> Result<(), 
 mod tests {
     use super::*;
 
+    use crate::core::versions::version_from_url;
+
     fn silent_ui() -> Ui {
         Ui::new(
             crate::ui::UiOptions {
@@ -618,39 +600,6 @@ mod tests {
         assert!(
             MSYS2_MIN_COMPATIBLE <= MSYS2_VERSION,
             "the oldest supported version cannot be newer than the shipped one"
-        );
-    }
-
-    #[test]
-    fn the_file_name_comes_from_the_url() {
-        assert_eq!(
-            file_name_of("https://example.test/a/b/msys2-base-x86_64-20260611.tar.xz"),
-            "msys2-base-x86_64-20260611.tar.xz"
-        );
-        assert_eq!(
-            file_name_of("https://example.test/get?file=msys2-base-x86_64-20260611.tar.xz"),
-            "get"
-        );
-    }
-
-    #[test]
-    fn the_version_is_read_out_of_the_archive_name() {
-        assert_eq!(
-            version_from_url("https://example.test/msys2-base-x86_64-20270115.tar.xz"),
-            Some("20270115")
-        );
-        // Anything that is not the expected shape is not guessed at.
-        assert_eq!(
-            version_from_url("https://example.test/msys2-base-i686-20260611.tar.xz"),
-            None
-        );
-        assert_eq!(
-            version_from_url("https://example.test/msys2-base-x86_64-latest.tar.xz"),
-            None
-        );
-        assert_eq!(
-            version_from_url("https://example.test/msys2-base-x86_64-20260611.tar.gz"),
-            None
         );
     }
 

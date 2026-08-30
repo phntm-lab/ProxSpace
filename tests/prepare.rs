@@ -36,7 +36,7 @@ fn silent_ui() -> Ui {
 /// touched by ProxSpace.
 fn unpacked() -> (tempfile::TempDir, Paths) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::from_dir(dir.path()).unwrap();
+    let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
     fs::create_dir_all(paths.msys2().join("usr/bin")).unwrap();
     (dir, paths)
 }
@@ -166,7 +166,7 @@ fn autobuild_gets_its_builds_mount_and_gives_it_back() {
 #[test]
 fn preparing_without_a_tree_says_so() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::from_dir(dir.path()).unwrap();
+    let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
 
     let error = prepare(&paths, &Mounts::for_paths(&paths)).unwrap_err();
 

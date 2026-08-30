@@ -12,9 +12,8 @@
 //! resumes from where it stopped rather than starting over or, worse, assuming
 //! success.
 
-use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -223,7 +222,7 @@ pub struct LoadOutcome {
 impl LoadOutcome {
     /// A file that cannot be used: every install step is idempotent, so
     /// starting over is always safe, but the reason must not be swallowed.
-    fn fresh(warning: String) -> LoadOutcome {
+    pub(crate) fn fresh(warning: String) -> LoadOutcome {
         LoadOutcome {
             state: State::default(),
             warning: Some(warning),
@@ -233,33 +232,18 @@ impl LoadOutcome {
 }
 
 impl State {
-    pub fn load(path: &Path) -> LoadOutcome {
-        let text = match fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                return LoadOutcome {
-                    state: State::default(),
-                    warning: None,
-                    migrated_from: None,
-                };
-            }
-            Err(error) => {
-                return LoadOutcome::fresh(format!(
-                    "cannot read `{}` ({error}); assuming a fresh install",
-                    path.display()
-                ));
-            }
-        };
-
-        // Read the format before the contents: an older file is not expected to
-        // deserialise into the current `State` at all, and a newer one may well
-        // not either.
-        let mut value = match serde_json::from_str::<serde_json::Value>(&text) {
+    /// Read state JSON: check the format, bring an older one forward, and
+    /// turn what cannot be used into a warning rather than an error.
+    ///
+    /// `source` names the file the text came from and appears in every
+    /// warning; the text itself arrives already read.
+    pub fn parse(text: &str, source: &str) -> LoadOutcome {
+        let mut value = match serde_json::from_str::<serde_json::Value>(text) {
             Ok(value) => value,
             Err(error) => {
                 return LoadOutcome::fresh(format!(
                     "`{}` is not valid state JSON ({error}); assuming a fresh install",
-                    path.display()
+                    source
                 ));
             }
         };
@@ -269,7 +253,7 @@ impl State {
             None => {
                 return LoadOutcome::fresh(format!(
                     "`{}` does not say which state format it is in; assuming a fresh install",
-                    path.display()
+                    source
                 ));
             }
         };
@@ -279,7 +263,7 @@ impl State {
                 "`{}` was written by a newer ProxSpace (state format {schema}, this build \
                  understands {SCHEMA_VERSION}); starting from scratch would delete a working \
                  install, so nothing is assumed — use a matching ProxSpace build",
-                path.display()
+                source
             );
             // Keeping whatever of it can be read beats reporting a working
             // install as absent.
@@ -299,7 +283,7 @@ impl State {
                 return LoadOutcome::fresh(format!(
                     "`{}` is in the older state format {schema} and cannot be brought forward \
                      ({reason}); assuming a fresh install",
-                    path.display()
+                    source
                 ));
             }
             migrated_from = Some(schema);
@@ -315,37 +299,14 @@ impl State {
                 Some(from) => format!(
                     "`{}` was brought forward from state format {from} into something this build \
                      cannot read ({error}); assuming a fresh install",
-                    path.display()
+                    source
                 ),
                 None => format!(
                     "`{}` is not valid state JSON ({error}); assuming a fresh install",
-                    path.display()
+                    source
                 ),
             }),
         }
-    }
-
-    /// Write the state so that a crash mid-write cannot corrupt it: serialise
-    /// in full, flush to a sibling temporary file, then rename over the target.
-    /// On Windows `rename` maps to `MoveFileEx(..., MOVEFILE_REPLACE_EXISTING)`,
-    /// which replaces the file in a single metadata operation.
-    pub fn save(&self, path: &Path) -> Result<(), StateError> {
-        let mut json = serde_json::to_string_pretty(self).map_err(StateError::Serialise)?;
-        json.push('\n');
-
-        let temporary = path.with_extension("json.tmp");
-        write_and_sync(&temporary, json.as_bytes()).map_err(|source| StateError::Write {
-            path: temporary.clone(),
-            source,
-        })?;
-
-        fs::rename(&temporary, path).map_err(|source| {
-            let _ = fs::remove_file(&temporary);
-            StateError::Write {
-                path: path.to_path_buf(),
-                source,
-            }
-        })
     }
 
     /// Record that a pipeline step completed, or that the install was rolled
@@ -374,45 +335,6 @@ impl State {
         self.pip_extras_installed = false;
         self.move_to(Stage::NotInstalled)
     }
-
-    /// True when the environment was installed somewhere else and the folder
-    /// has since been moved or copied.
-    pub fn was_moved_from(&self, current_base: &Path) -> bool {
-        match &self.install_path {
-            Some(recorded) => !paths_equal(Path::new(recorded), current_base),
-            None => false,
-        }
-    }
-}
-
-/// Compare install paths the way Windows does: case-insensitively, and without
-/// caring whether a trailing separator is present.
-///
-/// When both paths exist the filesystem answers instead, which also settles
-/// short names, symbolic links and `.` components. The recorded path usually
-/// does not exist any more — that is the situation being detected — so the
-/// textual comparison is what normally decides.
-fn paths_equal(a: &Path, b: &Path) -> bool {
-    fn normalise(path: &Path) -> String {
-        path.to_string_lossy()
-            .trim_end_matches(['\\', '/'])
-            .to_lowercase()
-            .replace('/', "\\")
-    }
-    if let (Ok(a), Ok(b)) = (fs::canonicalize(a), fs::canonicalize(b)) {
-        return a == b;
-    }
-    normalise(a) == normalise(b)
-}
-
-fn write_and_sync(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    use std::io::Write;
-
-    let mut file = fs::File::create(path)?;
-    file.write_all(bytes)?;
-    // Without this the rename can land before the data does, leaving a
-    // zero-length state file after an unclean shutdown.
-    file.sync_all()
 }
 
 /// Current time as an RFC 3339 UTC timestamp, the format used for every
@@ -626,43 +548,5 @@ mod tests {
         assert!(!state.pip_extras_installed);
         // Where it is installed is about the folder, not about the tree.
         assert_eq!(state.install_path.as_deref(), Some(r"C:\ProxSpace"));
-    }
-
-    #[test]
-    fn a_move_is_detected_case_insensitively() {
-        let state = populated();
-        assert!(!state.was_moved_from(Path::new(r"c:\proxspace")));
-        assert!(!state.was_moved_from(Path::new(r"C:\ProxSpace\")));
-        assert!(state.was_moved_from(Path::new(r"D:\ProxSpace")));
-    }
-
-    #[test]
-    fn a_fresh_install_is_never_reported_as_moved() {
-        assert!(!State::default().was_moved_from(Path::new(r"C:\ProxSpace")));
-    }
-
-    #[test]
-    fn a_directory_that_merely_starts_the_same_is_a_different_directory() {
-        let state = populated();
-        assert!(state.was_moved_from(Path::new(r"C:\ProxSpace2")));
-        assert!(state.was_moved_from(Path::new(r"C:\ProxSpace\msys2")));
-        assert!(state.was_moved_from(Path::new(r"C:\Prox")));
-    }
-
-    #[test]
-    fn two_spellings_of_one_real_directory_are_not_a_move() {
-        let dir = tempfile::tempdir().unwrap();
-        let here = dir.path().join("install");
-        fs::create_dir(&here).unwrap();
-
-        let state = State {
-            install_path: Some(here.to_string_lossy().into_owned()),
-            ..State::default()
-        };
-
-        // The same directory written a longer way round: only the filesystem
-        // can tell that these are one place.
-        assert!(!state.was_moved_from(&here.join(".").join(".")));
-        assert!(state.was_moved_from(&dir.path().join("elsewhere")));
     }
 }

@@ -23,6 +23,7 @@ use crate::core::paths::Paths;
 use crate::core::state::{State, timestamp};
 use crate::infra::msys2::shell;
 use crate::infra::pacman::Pacman;
+use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandRunner};
 use crate::ui::Ui;
 
@@ -134,7 +135,7 @@ pub fn collect(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths, state: &State
     report.field("log", ui.logger().path().display());
     report.field("report", paths.info_file().display());
     report.field("state", state.stage);
-    if state.was_moved_from(paths.base()) {
+    if state_file::was_moved_from(state, paths.base()) {
         report.field(
             "moved from",
             state
@@ -437,7 +438,7 @@ mod tests {
     #[test]
     fn a_report_on_an_empty_directory_says_so_without_running_anything() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
         let state = State::default();
 
         let report = collect(&NeverRuns, &silent_ui(), &paths, &state);
@@ -468,7 +469,7 @@ mod tests {
 
     fn tree_with_a_shell() -> (tempfile::TempDir, Paths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
         fs::create_dir_all(paths.msys2().join("usr/bin")).unwrap();
         fs::write(paths.msys2().join(shell::BASH), b"not really a program").unwrap();
         (dir, paths)
@@ -503,7 +504,7 @@ mod tests {
     #[test]
     fn the_report_is_written_next_to_the_binary() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         run(&NeverRuns, &silent_ui(), &paths, &State::default());
 

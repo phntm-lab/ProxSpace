@@ -9,9 +9,10 @@
 
 use std::fs;
 
-use proxspace::app::install::{self, Plan, Reinstall, Update};
+use proxspace::app::install::{self, Plan};
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Msys2Info, Stage, State};
+use proxspace::core::update::{Reinstall, Update, decide_update};
 use proxspace::infra::msys2::shell::BASH;
 use proxspace::infra::msys2::{MSYS2_MIN_COMPATIBLE, MSYS2_VERSION};
 
@@ -77,7 +78,7 @@ const TABLE: &[(Option<&str>, Reinstall, Expected)] = &[
 #[test]
 fn every_row_of_the_matrix_decides_what_it_should() {
     for (installed, reinstall, expected) in TABLE {
-        let update = install::decide_update(*installed, SHIPPED, MIN, *reinstall);
+        let update = decide_update(*installed, SHIPPED, MIN, *reinstall);
         assert_eq!(
             shape(&update),
             *expected,
@@ -94,7 +95,7 @@ fn every_row_of_the_matrix_decides_what_it_should() {
 fn a_floor_at_the_shipped_version_leaves_no_room_to_upgrade() {
     for installed in ["20260610", "20200101"] {
         assert_eq!(
-            shape(&install::decide_update(
+            shape(&decide_update(
                 Some(installed),
                 SHIPPED,
                 SHIPPED,
@@ -110,7 +111,7 @@ fn a_floor_at_the_shipped_version_leaves_no_room_to_upgrade() {
 /// no downgrading msys2, and the tree is not broken, so nothing is undone.
 #[test]
 fn a_binary_rolled_back_leaves_the_tree_at_its_own_version() {
-    let update = install::decide_update(
+    let update = decide_update(
         Some("20270101"),
         MSYS2_VERSION,
         MSYS2_MIN_COMPATIBLE,
@@ -141,7 +142,7 @@ fn a_version_that_is_not_a_datestamp_is_never_read_as_ancient() {
         "2026-06-11",
         "latest",
     ] {
-        let update = install::decide_update(Some(installed), SHIPPED, MIN, Reinstall::WhenNeeded);
+        let update = decide_update(Some(installed), SHIPPED, MIN, Reinstall::WhenNeeded);
         assert_eq!(
             shape(&update),
             Expected::Upgrade,
@@ -153,28 +154,28 @@ fn a_version_that_is_not_a_datestamp_is_never_read_as_ancient() {
 #[test]
 fn each_decision_carries_the_versions_it_is_about() {
     assert_eq!(
-        install::decide_update(Some("20260301"), SHIPPED, MIN, Reinstall::WhenNeeded),
+        decide_update(Some("20260301"), SHIPPED, MIN, Reinstall::WhenNeeded),
         Update::Upgrade {
             from: "20260301".to_string(),
             to: SHIPPED.to_string(),
         }
     );
     assert_eq!(
-        install::decide_update(Some("20250101"), SHIPPED, MIN, Reinstall::WhenNeeded),
+        decide_update(Some("20250101"), SHIPPED, MIN, Reinstall::WhenNeeded),
         Update::Reinstall {
             from: "20250101".to_string(),
             to: SHIPPED.to_string(),
         }
     );
     assert_eq!(
-        install::decide_update(Some("20250101"), SHIPPED, MIN, Reinstall::Never),
+        decide_update(Some("20250101"), SHIPPED, MIN, Reinstall::Never),
         Update::Blocked {
             from: "20250101".to_string(),
             to: SHIPPED.to_string(),
         }
     );
     assert_eq!(
-        install::decide_update(Some(SHIPPED), SHIPPED, MIN, Reinstall::WhenNeeded),
+        decide_update(Some(SHIPPED), SHIPPED, MIN, Reinstall::WhenNeeded),
         Update::UpToDate {
             version: SHIPPED.to_string(),
         }
@@ -186,7 +187,7 @@ fn each_decision_carries_the_versions_it_is_about() {
 #[test]
 fn this_builds_own_tree_needs_nothing_doing_to_it() {
     assert_eq!(
-        shape(&install::decide_update(
+        shape(&decide_update(
             Some(MSYS2_VERSION),
             MSYS2_VERSION,
             MSYS2_MIN_COMPATIBLE,
@@ -202,7 +203,7 @@ fn this_builds_own_tree_needs_nothing_doing_to_it() {
 /// with it.
 fn sandbox(version: Option<&str>, tree: bool) -> (tempfile::TempDir, Paths, State) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::from_dir(dir.path()).unwrap();
+    let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
 
     if tree {
         let bash = paths.msys2().join(BASH);
@@ -279,7 +280,7 @@ fn a_tree_without_a_state_file_is_a_fresh_install() {
 #[test]
 fn every_decision_says_something_the_user_can_read() {
     for (installed, reinstall, _) in TABLE {
-        let update = install::decide_update(*installed, SHIPPED, MIN, *reinstall);
+        let update = decide_update(*installed, SHIPPED, MIN, *reinstall);
         let summary = update.summary();
         assert!(!summary.is_empty(), "{update:?} has nothing to say");
         assert!(

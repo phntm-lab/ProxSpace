@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn mounts_come_from_the_install_paths() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = crate::infra::paths::from_dir(dir.path()).unwrap();
 
         assert_eq!(Mounts::for_paths(&paths).pm3, paths.pm3());
         assert_eq!(Mounts::for_paths(&paths).builds, None);

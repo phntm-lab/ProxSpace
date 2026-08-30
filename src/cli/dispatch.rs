@@ -12,14 +12,15 @@ use anyhow::{Context, Result};
 use crate::app::autobuild;
 use crate::app::clean::{self, Scope};
 use crate::app::info;
-use crate::app::install::{self, Plan, Reinstall};
+use crate::app::install::{self, Plan};
 use crate::app::mirrors;
 use crate::app::update::{self, Options, Outcome};
 use crate::cli::args::{Cli, Command, MirrorsAction};
 use crate::core::paths::Paths;
-use crate::core::preflight;
 use crate::core::state::{SCHEMA_VERSION, State};
+use crate::core::update::Reinstall;
 use crate::infra::msys2::shell;
+use crate::infra::state as state_file;
 use crate::ports::command::ProcessRunner;
 use crate::ports::http::UreqClient;
 use crate::ui::interrupt::{self, EXIT_INTERRUPTED};
@@ -27,7 +28,7 @@ use crate::ui::logging::Logger;
 use crate::ui::{Ui, UiOptions};
 
 pub fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
-    let paths = Paths::discover(cli.global.dir.as_deref())
+    let paths = crate::infra::paths::discover(cli.global.dir.as_deref())
         .context("cannot work out where ProxSpace lives")?;
 
     let logger = Arc::new(Logger::open(&paths.log_file(), &paths.log_backup_file()));
@@ -60,13 +61,13 @@ pub fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
     ui.detail(&format!("base directory: {}", paths.base().display()));
 
     if command.needs_preflight() {
-        let checks = preflight::run(&paths).context("environment check failed")?;
+        let checks = crate::infra::preflight::run(&paths).context("environment check failed")?;
         for warning in &checks.warnings {
             ui.warn(warning);
         }
     }
 
-    let loaded = State::load(&paths.state_file());
+    let loaded = state_file::load(&paths.state_file());
     if let Some(warning) = &loaded.warning {
         ui.warn(warning);
     }

@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Stage, State};
 use proxspace::infra::msys2::{self, ArchiveSource, Msys2Error};
+use proxspace::infra::state as state_file;
 use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
@@ -100,7 +101,7 @@ struct Sandbox {
 impl Sandbox {
     fn new() -> Sandbox {
         let dir = tempfile::tempdir().unwrap();
-        let paths = Paths::from_dir(dir.path()).unwrap();
+        let paths = proxspace::infra::paths::from_dir(dir.path()).unwrap();
         Sandbox { _dir: dir, paths }
     }
 
@@ -114,7 +115,7 @@ impl Sandbox {
 
     /// The state as it is on disk, not as the caller's copy remembers it.
     fn saved_state(&self) -> State {
-        State::load(&self.paths.state_file()).state
+        state_file::load(&self.paths.state_file()).state
     }
 
     fn provision(&self, client: &dyn HttpClient, state: &mut State) -> Result<(), Msys2Error> {
@@ -252,7 +253,7 @@ fn a_tree_left_over_from_an_unfinished_unpack_is_replaced() {
     fs::write(sandbox.tree().join("etc/half-finished"), b"junk").unwrap();
     state.move_to(Stage::Downloaded).unwrap();
     state.msys2 = None;
-    state.save(&sandbox.paths.state_file()).unwrap();
+    state_file::save(&state, &sandbox.paths.state_file()).unwrap();
 
     sandbox.provision(&client, &mut state).unwrap();
 
