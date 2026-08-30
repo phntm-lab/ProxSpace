@@ -30,13 +30,14 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 use crate::core::packages::{PackageList, PackagesError, PkgSpec};
+use crate::core::pacman::{Cache, Mode};
 use crate::core::paths::Paths;
 use crate::core::state::{PackagesInfo, Stage, State, StateError, timestamp};
 use crate::infra::archive::{self, ExtractError};
 use crate::infra::msys2::procs::{self, ProcsError};
 use crate::infra::msys2::shell::BASH;
 use crate::infra::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
-use crate::infra::pacman::{Cache, Mode, Pacman, PacmanError};
+use crate::infra::pacman::{Pacman, PacmanError, conf};
 use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ports::http::HttpClient;
@@ -503,7 +504,7 @@ pub(crate) fn settle_pins(
 /// never gets installed at all.
 fn write_pin_block(env: &Env<'_>, list: &PackageList) -> Result<(), InstallError> {
     let names: Vec<&str> = list.pinned().map(PkgSpec::name).collect();
-    if env.pacman.set_ignored(env.ui, &names)? {
+    if conf::set_ignored(env.pacman.conf_path(), env.ui, &names)? {
         env.ui.detail(&format!(
             "`{}` now holds {}",
             env.pacman.conf_path().display(),
@@ -610,12 +611,6 @@ pub(crate) fn describe(names: &[&str]) -> String {
             names.len() - SHOWN
         )
     }
-}
-
-/// Whether the environment can be used without running the pipeline again.
-/// Cheap: the state file plus one file on disk.
-pub fn is_ready(paths: &Paths, state: &State) -> bool {
-    state.stage >= Stage::Ready && paths.msys2().join(BASH).is_file()
 }
 
 /// Bring an installed tree up to date where it stands: `pacman -Syuu`, then

@@ -18,6 +18,7 @@ use proxspace::app::install::{self, InstallError, Plan};
 use proxspace::app::repair;
 use proxspace::app::update::{self, Options, Outcome, UpdateError};
 use proxspace::core::packages::{PackageList, split_package_file};
+use proxspace::core::pacman::MANAGED_BEGIN;
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Msys2Info, Stage, State};
 use proxspace::core::update::Reinstall;
@@ -333,10 +334,10 @@ fn the_pin_ends_up_in_pacman_conf_and_at_the_pinned_version() {
     run(&fake, &paths, &mut state, false).unwrap();
 
     let conf = read(&paths.msys2().join(pacman::CONF_PATH));
-    assert!(conf.contains(pacman::MANAGED_BEGIN));
+    assert!(conf.contains(MANAGED_BEGIN));
     assert!(conf.contains(&format!("IgnorePkg = {PIN_NAME}")));
     // Inside `[options]`, where pacman actually reads it.
-    assert!(conf.find(pacman::MANAGED_BEGIN) < conf.find("\n[clangarm64]"));
+    assert!(conf.find(MANAGED_BEGIN) < conf.find("\n[clangarm64]"));
 
     assert_eq!(fake.version_of(PIN_NAME).as_deref(), Some("2.46.1-1"));
 }

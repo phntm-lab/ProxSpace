@@ -7,9 +7,10 @@
 
 use crate::app::install::{Env, InstallError, Plan, batches, describe, settle_pins};
 use crate::core::packages::PkgSpec;
+use crate::core::pacman::Mode;
 use crate::core::paths::Paths;
 use crate::infra::msys2;
-use crate::infra::pacman::{Mode, Pacman};
+use crate::infra::pacman::{Pacman, conf};
 use crate::ports::command::CommandRunner;
 use crate::ui::Ui;
 
@@ -52,7 +53,7 @@ pub fn repair(
     }
 
     let installed = env.pacman.query_installed(runner, ui)?;
-    let held = env.pacman.ignored().unwrap_or_default();
+    let held = conf::ignored(env.pacman.conf_path()).unwrap_or_default();
     let names: Vec<&str> = installed
         .names()
         .filter(|name| !held.iter().any(|pinned| pinned == name))

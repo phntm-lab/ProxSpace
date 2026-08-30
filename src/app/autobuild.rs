@@ -19,10 +19,11 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::core::assets::AUTOBUILD_PATH;
+use crate::core::pacman::Mode;
 use crate::core::paths::Paths;
 use crate::infra::msys2::fstab::{self, FstabError, Mounts};
 use crate::infra::msys2::shell::{self, ShellError};
-use crate::infra::pacman::{Mode, Pacman, PacmanError};
+use crate::infra::pacman::{Pacman, PacmanError};
 use crate::ports::command::CommandRunner;
 use crate::ui::Ui;
 use crate::ui::interrupt::{self, Interrupted};

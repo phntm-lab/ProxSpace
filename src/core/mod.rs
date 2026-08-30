@@ -6,6 +6,7 @@
 
 pub mod assets;
 pub mod packages;
+pub mod pacman;
 pub mod paths;
 pub mod preflight;
 pub mod state;

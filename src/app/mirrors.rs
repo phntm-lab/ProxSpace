@@ -23,9 +23,10 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
+use crate::core::pacman::Mode;
 use crate::core::paths::Paths;
 use crate::infra::msys2::{self, shell};
-use crate::infra::pacman::{Mode, Pacman, PacmanError};
+use crate::infra::pacman::{Pacman, PacmanError};
 use crate::ports::command::{Cmd, CommandError, CommandRunner};
 use crate::ui::Ui;
 use crate::ui::interrupt::{self, Interrupted};

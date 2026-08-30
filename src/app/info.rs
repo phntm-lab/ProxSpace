@@ -22,7 +22,7 @@ use crate::core::packages::PackageList;
 use crate::core::paths::Paths;
 use crate::core::state::{State, timestamp};
 use crate::infra::msys2::shell;
-use crate::infra::pacman::Pacman;
+use crate::infra::pacman::{CONF_PATH, conf};
 use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandRunner};
 use crate::ui::Ui;
@@ -193,7 +193,7 @@ fn add_pins(report: &mut Report, paths: &Paths) {
         .map(|list| list.pinned().map(|spec| spec.describe()).collect())
         .unwrap_or_default();
 
-    match Pacman::new(&paths.msys2()).ignored() {
+    match conf::ignored(&paths.msys2().join(CONF_PATH)) {
         Ok(pinned) if pinned.is_empty() => report.field("pinned", "none"),
         Ok(pinned) => report.field("pinned", pinned.join(", ")),
         Err(_) => report.field("pinned", "unreadable — there is no `pacman.conf`"),
