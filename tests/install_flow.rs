@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use proxspace::app::install::{self, InstallError, Plan};
+use proxspace::app::repair;
 use proxspace::app::update::{self, Options, Outcome, UpdateError};
 use proxspace::core::packages::{PackageList, split_package_file};
 use proxspace::core::paths::Paths;
@@ -580,7 +581,7 @@ fn a_repair_puts_every_installed_package_back_over_itself() {
     run(&fake, &paths, &mut state, false).unwrap();
     let before = fake.calls().len();
 
-    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+    repair::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
 
     let calls = fake.calls();
     let during = &calls[before..];
@@ -611,7 +612,7 @@ fn a_repair_of_an_empty_tree_asks_pacman_to_install_nothing() {
     let (_dir, paths, _state) = unpacked();
     let fake = Fake::default();
 
-    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+    repair::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
 
     assert!(
         !fake
@@ -636,10 +637,10 @@ fn the_dlls_are_rebased_only_when_asked() {
     )
     .unwrap();
 
-    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
+    repair::repair(&fake, &ui(true), &paths, &plan(&paths, false), false).unwrap();
     assert!(!fake.ran("rebaseall"));
 
-    install::repair(&fake, &ui(true), &paths, &plan(&paths, false), true).unwrap();
+    repair::repair(&fake, &ui(true), &paths, &plan(&paths, false), true).unwrap();
     assert!(fake.ran("rebaseall"), "got: {:?}", fake.calls());
 }
 

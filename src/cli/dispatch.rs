@@ -14,6 +14,7 @@ use crate::app::clean::{self, Scope};
 use crate::app::info;
 use crate::app::install::{self, Plan};
 use crate::app::mirrors;
+use crate::app::repair;
 use crate::app::update::{self, Options, Outcome};
 use crate::cli::args::{Cli, Command, MirrorsAction};
 use crate::core::paths::Paths;
@@ -176,7 +177,7 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Res
         // wrong, so the pipeline that decides what is missing is exactly the
         // wrong tool. Everything installed goes back over itself instead.
         Command::Repair { rebase } => {
-            install::repair(&ProcessRunner, ui, paths, &Plan::shipped(paths)?, *rebase)?;
+            repair::repair(&ProcessRunner, ui, paths, &Plan::shipped(paths)?, *rebase)?;
             Ok(0)
         }
 

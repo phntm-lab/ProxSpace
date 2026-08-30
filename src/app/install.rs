@@ -32,7 +32,6 @@ use thiserror::Error;
 use crate::core::packages::{PackageList, PackagesError, PkgSpec};
 use crate::core::paths::Paths;
 use crate::core::state::{PackagesInfo, Stage, State, StateError, timestamp};
-use crate::core::update::{Reinstall, Update, decide_update};
 use crate::infra::archive::{self, ExtractError};
 use crate::infra::msys2::procs::{self, ProcsError};
 use crate::infra::msys2::shell::BASH;
@@ -133,11 +132,11 @@ impl Plan {
 }
 
 /// Everything the steps need but never change.
-struct Env<'a> {
-    runner: &'a dyn CommandRunner,
-    ui: &'a Ui,
-    paths: &'a Paths,
-    pacman: Pacman,
+pub(crate) struct Env<'a> {
+    pub(crate) runner: &'a dyn CommandRunner,
+    pub(crate) ui: &'a Ui,
+    pub(crate) paths: &'a Paths,
+    pub(crate) pacman: Pacman,
 }
 
 impl Env<'_> {
@@ -210,77 +209,8 @@ pub fn ensure_ready(
 /// room for the path to pacman and its flags.
 const MAX_COMMAND_LINE: usize = 24_000;
 
-/// Reinstall every installed package on top of itself.
-///
-/// This is `ps-repair`, and it exists for a tree whose files are wrong in ways
-/// nothing can work out from the outside: a half-written package after a power
-/// cut, files an antivirus quarantined, a `.dll` truncated by a full disk.
-/// pacman is told to overwrite whatever it finds, so every file in the tree
-/// goes back to what the package says it should be.
-///
-/// Two differences from the original loop of one `pacman -S` per package. The
-/// packages go in as few transactions rather than several hundred, which turns
-/// half an hour into minutes. And the pinned package is left out of them and
-/// reinstalled from its URL instead: named on a `-S` command line it would
-/// either be refused because of the pin in `pacman.conf` or, if the pin had
-/// gone missing, quietly replaced by a newer version — and a newer
-/// `arm-none-eabi-binutils` is exactly the breakage the pin is there to
-/// prevent.
-pub fn repair(
-    runner: &dyn CommandRunner,
-    ui: &Ui,
-    paths: &Paths,
-    plan: &Plan,
-    rebase: bool,
-) -> Result<(), InstallError> {
-    let env = Env {
-        runner,
-        ui,
-        paths,
-        pacman: Pacman::new(&paths.msys2()),
-    };
-
-    // Cheap, idempotent, and it repairs the breakages that are not about
-    // package files at all: an `/etc/fstab` left behind by a moved folder, an
-    // account file written for a Windows user that no longer exists.
-    let prepared = msys2::prepare(runner, ui, paths, &plan.mounts)?;
-    if prepared.changed_anything() {
-        ui.info("the msys2 tree was brought up to date with this ProxSpace");
-    }
-
-    let installed = env.pacman.query_installed(runner, ui)?;
-    let held = env.pacman.ignored().unwrap_or_default();
-    let names: Vec<&str> = installed
-        .names()
-        .filter(|name| !held.iter().any(|pinned| pinned == name))
-        .collect();
-
-    if names.is_empty() {
-        ui.warn("no packages are installed in this tree; there is nothing to reinstall");
-    } else {
-        ui.step(&format!("reinstalling {}", describe(&names)));
-        let batches = batches(&names);
-        for (index, batch) in batches.iter().enumerate() {
-            if batches.len() > 1 {
-                ui.info(&format!("batch {} of {}", index + 1, batches.len()));
-            }
-            env.pacman.install(runner, ui, batch, Mode::Reinstall)?;
-        }
-    }
-
-    let pins: Vec<&PkgSpec> = plan.list.pinned().collect();
-    settle_pins(&env, &plan.list, &pins)?;
-
-    if rebase {
-        msys2::rebase(runner, ui, paths)?;
-    }
-
-    ui.success("the environment has been reinstalled over itself");
-    Ok(())
-}
-
 /// Split package names into command lines short enough for Windows to start.
-fn batches<'a>(names: &[&'a str]) -> Vec<Vec<&'a str>> {
+pub(crate) fn batches<'a>(names: &[&'a str]) -> Vec<Vec<&'a str>> {
     let mut batches: Vec<Vec<&str>> = Vec::new();
     let mut length = 0;
 
@@ -555,7 +485,11 @@ fn install_pins(env: &Env<'_>, pins: &[&PkgSpec]) -> Result<(), InstallError> {
 /// if nobody looks at what is actually installed afterwards. `pins` are the
 /// ones that need installing — on a fresh tree that is all of them, after an
 /// upgrade only the ones something moved.
-fn settle_pins(env: &Env<'_>, list: &PackageList, pins: &[&PkgSpec]) -> Result<(), InstallError> {
+pub(crate) fn settle_pins(
+    env: &Env<'_>,
+    list: &PackageList,
+    pins: &[&PkgSpec],
+) -> Result<(), InstallError> {
     install_pins(env, pins)?;
     write_pin_block(env, list)?;
     verify_pins(env, list)
@@ -658,7 +592,7 @@ fn finish(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
 }
 
 /// "3 packages: a, b, c", shortened once a list stops being readable.
-fn describe(names: &[&str]) -> String {
+pub(crate) fn describe(names: &[&str]) -> String {
     const SHOWN: usize = 8;
     let head: Vec<&str> = names.iter().take(SHOWN).copied().collect();
     let noun = if names.len() == 1 {
@@ -788,61 +722,6 @@ pub fn reinstall_msys2(
     ensure_ready(http, runner, ui, paths, state, plan)
 }
 
-/// Decide what an update run does, from the state file and what is on disk.
-pub fn plan_update(paths: &Paths, state: &State, plan: &Plan, reinstall: Reinstall) -> Update {
-    // Both halves have to agree that there is a tree: a state file left behind
-    // by a deleted folder describes nothing, and a folder no state file knows
-    // about cannot be told apart from a half-finished install.
-    let installed = match (&state.msys2, paths.msys2().join(BASH).is_file()) {
-        (Some(info), true) => Some(info.version.as_str()),
-        _ => None,
-    };
-    decide_update(
-        installed,
-        &plan.source.version,
-        &plan.min_compatible,
-        reinstall,
-    )
-}
-
-/// Show the plan, and get it agreed to when it destroys the tree.
-///
-/// Returns whether to go ahead. The plan is always shown before anything
-/// happens: an update that turns out to mean "your five gigabytes are about to
-/// be deleted" should never be a surprise.
-pub fn confirm_update(ui: &Ui, update: &Update) -> bool {
-    match update {
-        Update::Newer { .. } | Update::Blocked { .. } => ui.warn(&update.summary()),
-        _ => ui.info(&update.summary()),
-    }
-
-    if update.is_blocked() {
-        return false;
-    }
-    if !update.destroys_the_tree() {
-        return true;
-    }
-
-    ui.info("`pm3` and `builds` are not touched; the proxmark3 sources and anything built from them stay");
-    match ui.confirm("delete the msys2 tree and install it again?", false) {
-        Ok(answer) => {
-            if !answer {
-                ui.info("left as it is; the environment goes on working as before");
-            }
-            answer
-        }
-        // No terminal to ask on and no `--yes`. Deleting gigabytes on a guess
-        // is the one thing that must not happen here.
-        Err(_) => {
-            ui.warn(
-                "cannot ask whether to reinstall msys2; run the command again with `--yes` \
-                 to agree to it in advance",
-            );
-            false
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -851,14 +730,6 @@ mod tests {
     /// spaces between them.
     fn line_length(batch: &[&str]) -> usize {
         batch.iter().map(|name| name.len() + 1).sum()
-    }
-
-    #[test]
-    fn the_flags_translate_into_the_override() {
-        assert_eq!(Reinstall::from_flags(false, false), Reinstall::WhenNeeded);
-        assert_eq!(Reinstall::from_flags(true, false), Reinstall::Always);
-        assert_eq!(Reinstall::from_flags(false, true), Reinstall::Never);
-        assert_eq!(Reinstall::default(), Reinstall::WhenNeeded);
     }
 
     #[test]

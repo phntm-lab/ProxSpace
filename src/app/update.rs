@@ -22,7 +22,8 @@ use crate::app::install::{self, InstallError, Plan};
 use crate::app::release;
 use crate::core::paths::Paths;
 use crate::core::state::State;
-use crate::core::update::{Reinstall, Update};
+use crate::core::update::{Reinstall, Update, decide_update};
+use crate::infra::msys2::shell::BASH;
 use crate::infra::state as state_file;
 use crate::ports::command::CommandRunner;
 use crate::ports::http::HttpClient;
@@ -78,7 +79,7 @@ pub fn run(
     // prints the same thing a real run is about to do.
     let tree = options
         .wants_msys2()
-        .then(|| install::plan_update(paths, state, plan, options.reinstall));
+        .then(|| plan_update(paths, state, plan, options.reinstall));
     let packages_current = install::packages_are_current(state, &plan.list);
 
     if let Some(Update::Blocked { from, to }) = &tree {
@@ -123,7 +124,7 @@ fn update_tree(
     plan: &Plan,
     tree: Update,
 ) -> Result<(), UpdateError> {
-    if !install::confirm_update(ui, &tree) {
+    if !confirm_update(ui, &tree) {
         return Ok(());
     }
 
@@ -184,6 +185,61 @@ fn report(ui: &Ui, options: &Options, tree: Option<&Update>, packages_current: b
         });
     }
     ui.info("nothing was changed (--check)");
+}
+
+/// Decide what an update run does, from the state file and what is on disk.
+pub fn plan_update(paths: &Paths, state: &State, plan: &Plan, reinstall: Reinstall) -> Update {
+    // Both halves have to agree that there is a tree: a state file left behind
+    // by a deleted folder describes nothing, and a folder no state file knows
+    // about cannot be told apart from a half-finished install.
+    let installed = match (&state.msys2, paths.msys2().join(BASH).is_file()) {
+        (Some(info), true) => Some(info.version.as_str()),
+        _ => None,
+    };
+    decide_update(
+        installed,
+        &plan.source.version,
+        &plan.min_compatible,
+        reinstall,
+    )
+}
+
+/// Show the plan, and get it agreed to when it destroys the tree.
+///
+/// Returns whether to go ahead. The plan is always shown before anything
+/// happens: an update that turns out to mean "your five gigabytes are about to
+/// be deleted" should never be a surprise.
+pub fn confirm_update(ui: &Ui, update: &Update) -> bool {
+    match update {
+        Update::Newer { .. } | Update::Blocked { .. } => ui.warn(&update.summary()),
+        _ => ui.info(&update.summary()),
+    }
+
+    if update.is_blocked() {
+        return false;
+    }
+    if !update.destroys_the_tree() {
+        return true;
+    }
+
+    ui.info("`pm3` and `builds` are not touched; the proxmark3 sources and anything built from them stay");
+    match ui.confirm("delete the msys2 tree and install it again?", false) {
+        Ok(answer) => {
+            if !answer {
+                ui.info("left as it is; the environment goes on working as before");
+            }
+            answer
+        }
+        // No terminal to ask on and no `--yes`. Deleting gigabytes on a guess
+        // is the one thing that must not happen here.
+        Err(_) => {
+            ui.warn(
+                "cannot ask whether to reinstall msys2; run the command again with `--yes` \
+                 to agree to it in advance",
+            );
+            false
+        }
+    }
 }
 
 #[cfg(test)]

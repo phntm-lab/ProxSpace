@@ -9,7 +9,8 @@
 
 use std::fs;
 
-use proxspace::app::install::{self, Plan};
+use proxspace::app::install::Plan;
+use proxspace::app::update;
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Msys2Info, Stage, State};
 use proxspace::core::update::{Reinstall, Update, decide_update};
@@ -235,7 +236,7 @@ fn plan(paths: &Paths) -> Plan {
 fn a_tree_and_a_state_that_agree_are_taken_at_their_word() {
     let (_dir, paths, state) = sandbox(Some("20260301"), true);
     assert_eq!(
-        shape(&install::plan_update(
+        shape(&update::plan_update(
             &paths,
             &state,
             &plan(&paths),
@@ -250,7 +251,7 @@ fn a_tree_and_a_state_that_agree_are_taken_at_their_word() {
 fn a_state_file_without_a_tree_is_a_fresh_install() {
     let (_dir, paths, state) = sandbox(Some("20250101"), false);
     assert_eq!(
-        shape(&install::plan_update(
+        shape(&update::plan_update(
             &paths,
             &state,
             &plan(&paths),
@@ -267,7 +268,7 @@ fn a_state_file_without_a_tree_is_a_fresh_install() {
 fn a_tree_without_a_state_file_is_a_fresh_install() {
     let (_dir, paths, state) = sandbox(None, true);
     assert_eq!(
-        shape(&install::plan_update(
+        shape(&update::plan_update(
             &paths,
             &state,
             &plan(&paths),

@@ -146,3 +146,16 @@ pub fn decide_update(
         Update::Reinstall { from, to }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_flags_translate_into_the_override() {
+        assert_eq!(Reinstall::from_flags(false, false), Reinstall::WhenNeeded);
+        assert_eq!(Reinstall::from_flags(true, false), Reinstall::Always);
+        assert_eq!(Reinstall::from_flags(false, true), Reinstall::Never);
+        assert_eq!(Reinstall::default(), Reinstall::WhenNeeded);
+    }
+}
