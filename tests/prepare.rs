@@ -10,9 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use proxspace::app::provision::{self, PrepareError};
+use proxspace::core::fstab::Mounts;
 use proxspace::core::paths::Paths;
-use proxspace::infra::msys2::fstab::Mounts;
-use proxspace::infra::msys2::{self, PrepareError};
 use proxspace::ports::command::ProcessRunner;
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
@@ -41,8 +41,8 @@ fn unpacked() -> (tempfile::TempDir, Paths) {
     (dir, paths)
 }
 
-fn prepare(paths: &Paths, mounts: &Mounts) -> Result<msys2::Prepared, PrepareError> {
-    msys2::prepare_with_account(&silent_ui(), paths, mounts, MKPASSWD, MKGROUP)
+fn prepare(paths: &Paths, mounts: &Mounts) -> Result<provision::Prepared, PrepareError> {
+    provision::prepare_with_account(&silent_ui(), paths, mounts, MKPASSWD, MKGROUP)
 }
 
 fn read(path: &Path) -> String {
@@ -180,7 +180,7 @@ fn preparing_a_tree_without_the_account_tools_names_the_missing_one() {
     // tree must fail before anything is written rather than halfway through.
     let (_dir, paths) = unpacked();
 
-    let error = msys2::prepare(
+    let error = provision::prepare(
         &ProcessRunner,
         &silent_ui(),
         &paths,

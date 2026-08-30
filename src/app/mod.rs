@@ -8,6 +8,7 @@ pub mod clean;
 pub mod info;
 pub mod install;
 pub mod mirrors;
+pub mod provision;
 pub mod release;
 pub mod repair;
 pub mod update;

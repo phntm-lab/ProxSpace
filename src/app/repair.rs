@@ -5,11 +5,12 @@
 //! the wrong tool. This asks the tree what it holds and installs all of it
 //! again.
 
-use crate::app::install::{Env, InstallError, Plan, batches, describe, settle_pins};
+use crate::app::install::{Env, InstallError, batches, describe, settle_pins};
+use crate::app::provision;
 use crate::core::packages::PkgSpec;
 use crate::core::pacman::Mode;
 use crate::core::paths::Paths;
-use crate::infra::msys2;
+use crate::core::plan::Plan;
 use crate::infra::pacman::{Pacman, conf};
 use crate::ports::command::CommandRunner;
 use crate::ui::Ui;
@@ -47,7 +48,7 @@ pub fn repair(
     // Cheap, idempotent, and it repairs the breakages that are not about
     // package files at all: an `/etc/fstab` left behind by a moved folder, an
     // account file written for a Windows user that no longer exists.
-    let prepared = msys2::prepare(runner, ui, paths, &plan.mounts)?;
+    let prepared = provision::prepare(runner, ui, paths, &plan.mounts)?;
     if prepared.changed_anything() {
         ui.info("the msys2 tree was brought up to date with this ProxSpace");
     }
@@ -76,7 +77,7 @@ pub fn repair(
     settle_pins(&env, &plan.list, &pins)?;
 
     if rebase {
-        msys2::rebase(runner, ui, paths)?;
+        provision::rebase(runner, ui, paths)?;
     }
 
     ui.success("the environment has been reinstalled over itself");

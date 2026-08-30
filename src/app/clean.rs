@@ -14,13 +14,14 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::core::msys2::ArchiveSource;
 use crate::core::pacman::Cache;
 use crate::core::paths::Paths;
 use crate::core::state::{State, StateError};
 use crate::infra::archive::{self, ExtractError};
 use crate::infra::download;
+use crate::infra::msys2::procs::Stopped;
 use crate::infra::msys2::procs::{self, ProcsError};
-use crate::infra::msys2::{ArchiveSource, procs::Stopped};
 use crate::infra::pacman::{Pacman, PacmanError};
 use crate::infra::state as state_file;
 use crate::ports::command::CommandRunner;

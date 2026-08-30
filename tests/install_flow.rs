@@ -14,15 +14,17 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use proxspace::app::install::{self, InstallError, Plan};
+use proxspace::app::install::{self, InstallError};
 use proxspace::app::repair;
 use proxspace::app::update::{self, Options, Outcome, UpdateError};
+use proxspace::core::fstab::Mounts;
+use proxspace::core::msys2::ArchiveSource;
 use proxspace::core::packages::{PackageList, split_package_file};
 use proxspace::core::pacman::MANAGED_BEGIN;
 use proxspace::core::paths::Paths;
+use proxspace::core::plan::Plan;
 use proxspace::core::state::{Msys2Info, Stage, State};
 use proxspace::core::update::Reinstall;
-use proxspace::infra::msys2::{ArchiveSource, fstab::Mounts};
 use proxspace::infra::pacman;
 use proxspace::infra::state as state_file;
 use proxspace::ports::command::{Cmd, CommandError, CommandRunner, Output};
@@ -258,7 +260,7 @@ fn unpacked() -> (tempfile::TempDir, Paths, State) {
 fn plan(paths: &Paths, force: bool) -> Plan {
     Plan {
         source: ArchiveSource::msys2(),
-        min_compatible: proxspace::infra::msys2::MSYS2_MIN_COMPATIBLE.to_string(),
+        min_compatible: proxspace::core::msys2::MSYS2_MIN_COMPATIBLE.to_string(),
         list: list(),
         mounts: Mounts::for_paths(paths),
         force,

@@ -382,7 +382,7 @@ mod tests {
         );
         assert!(script.contents.contains(&format!(
             "[ \"$MSYSTEM\" != \"{}\" ]",
-            crate::infra::msys2::MSYSTEM
+            crate::core::msys2::MSYSTEM
         )));
         // The DLLs beside the client and the Qt plugin must come from the same
         // prefix the client was linked against, or the archive fails on the

@@ -18,8 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+use proxspace::core::msys2;
 use proxspace::infra::download::{self, DownloadError};
-use proxspace::infra::msys2;
+use proxspace::infra::msys2::archive as msys2_archive;
 use proxspace::ports::http::{HttpClient, HttpError, Request, UreqClient};
 use proxspace::ui::logging::Logger;
 use proxspace::ui::{Ui, UiOptions};
@@ -425,7 +426,7 @@ fn the_real_archive_can_be_finished_from_a_partial_file() {
     // The two halves have to join into the real file, not merely into a file of
     // the right length.
     assert_eq!(
-        msys2::sha256_file(&destination).unwrap(),
+        msys2_archive::sha256_file(&destination).unwrap(),
         msys2::MSYS2_SHA256
     );
 }

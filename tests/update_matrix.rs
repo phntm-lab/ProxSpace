@@ -9,13 +9,13 @@
 
 use std::fs;
 
-use proxspace::app::install::Plan;
 use proxspace::app::update;
+use proxspace::core::msys2::{MSYS2_MIN_COMPATIBLE, MSYS2_VERSION};
 use proxspace::core::paths::Paths;
+use proxspace::core::plan::Plan;
 use proxspace::core::state::{Msys2Info, Stage, State};
 use proxspace::core::update::{Reinstall, Update, decide_update};
 use proxspace::infra::msys2::shell::BASH;
-use proxspace::infra::msys2::{MSYS2_MIN_COMPATIBLE, MSYS2_VERSION};
 
 /// The shape of a decision, without the version strings it carries. The
 /// strings are checked on their own further down; keeping them out of the table

@@ -18,9 +18,10 @@
 
 use thiserror::Error;
 
-use crate::app::install::{self, InstallError, Plan};
+use crate::app::install::{self, InstallError};
 use crate::app::release;
 use crate::core::paths::Paths;
+use crate::core::plan::Plan;
 use crate::core::state::State;
 use crate::core::update::{Reinstall, Update, decide_update};
 use crate::infra::msys2::shell::BASH;

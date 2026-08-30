@@ -5,10 +5,14 @@
 //! back as a value. Nothing in this layer may import from another one.
 
 pub mod assets;
+pub mod fstab;
+pub mod msys2;
 pub mod packages;
 pub mod pacman;
 pub mod paths;
+pub mod plan;
 pub mod preflight;
 pub mod state;
 pub mod update;
+pub mod userdb;
 pub mod versions;

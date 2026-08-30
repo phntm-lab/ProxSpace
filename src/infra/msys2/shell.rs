@@ -29,8 +29,8 @@ use std::process;
 
 use thiserror::Error;
 
+use crate::core::msys2::MSYSTEM;
 use crate::core::paths::Paths;
-use crate::infra::msys2::MSYSTEM;
 use crate::ui::interrupt;
 
 /// The login shell, relative to the root of the msys2 tree.

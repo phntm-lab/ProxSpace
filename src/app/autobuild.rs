@@ -19,9 +19,10 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::core::assets::AUTOBUILD_PATH;
+use crate::core::fstab::Mounts;
 use crate::core::pacman::Mode;
 use crate::core::paths::Paths;
-use crate::infra::msys2::fstab::{self, FstabError, Mounts};
+use crate::infra::msys2::fstab::{self, FstabError};
 use crate::infra::msys2::shell::{self, ShellError};
 use crate::infra::pacman::{Pacman, PacmanError};
 use crate::ports::command::CommandRunner;
@@ -235,7 +236,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    use crate::infra::msys2::fstab::FSTAB_PATH;
+    use crate::core::fstab::FSTAB_PATH;
     use crate::ports::command::{Cmd, CommandError, Output};
 
     fn silent_ui() -> Ui {

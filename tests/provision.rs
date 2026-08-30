@@ -12,9 +12,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use proxspace::app::provision;
+use proxspace::core::msys2::ArchiveSource;
 use proxspace::core::paths::Paths;
 use proxspace::core::state::{Stage, State};
-use proxspace::infra::msys2::{self, ArchiveSource, Msys2Error};
+use proxspace::infra::msys2::archive::{self as msys2_archive, Msys2Error};
 use proxspace::infra::state as state_file;
 use proxspace::ports::http::{HttpClient, HttpError, Request, Response};
 use proxspace::ui::logging::Logger;
@@ -84,7 +86,7 @@ impl HttpClient for FakeClient {
 fn fixture_source() -> ArchiveSource {
     ArchiveSource {
         url: "https://mirror.test/distrib/x86_64/msys2-base-x86_64-20260611.tar.xz".to_string(),
-        sha256: msys2::sha256_file(Path::new(FIXTURE)).unwrap(),
+        sha256: msys2_archive::sha256_file(Path::new(FIXTURE)).unwrap(),
         version: "20260611".to_string(),
     }
 }
@@ -119,7 +121,7 @@ impl Sandbox {
     }
 
     fn provision(&self, client: &dyn HttpClient, state: &mut State) -> Result<(), Msys2Error> {
-        msys2::ensure_tree(client, &silent_ui(), &self.paths, state, &fixture_source())
+        provision::ensure_tree(client, &silent_ui(), &self.paths, state, &fixture_source())
     }
 }
 
@@ -216,15 +218,15 @@ fn a_damaged_archive_stops_at_downloaded_and_keeps_nothing_unpacked() {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("body");
             fs::write(&path, &body).unwrap();
-            msys2::sha256_file(&path).unwrap()
+            msys2_archive::sha256_file(&path).unwrap()
         },
         version: "20260611".to_string(),
     };
     let client = FakeClient::serving(body);
     let mut state = State::default();
 
-    let error =
-        msys2::ensure_tree(&client, &silent_ui(), &sandbox.paths, &mut state, &source).unwrap_err();
+    let error = provision::ensure_tree(&client, &silent_ui(), &sandbox.paths, &mut state, &source)
+        .unwrap_err();
 
     assert!(
         matches!(error, Msys2Error::Extract(_)),

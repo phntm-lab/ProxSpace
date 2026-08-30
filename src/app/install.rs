@@ -29,14 +29,16 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
+use crate::app::provision::{self, PrepareError, RebaseError};
 use crate::core::packages::{PackageList, PackagesError, PkgSpec};
 use crate::core::pacman::{Cache, Mode};
 use crate::core::paths::Paths;
+use crate::core::plan::Plan;
 use crate::core::state::{PackagesInfo, Stage, State, StateError, timestamp};
 use crate::infra::archive::{self, ExtractError};
+use crate::infra::msys2::archive::Msys2Error;
 use crate::infra::msys2::procs::{self, ProcsError};
 use crate::infra::msys2::shell::BASH;
-use crate::infra::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
 use crate::infra::pacman::{Pacman, PacmanError, conf};
 use crate::infra::state as state_file;
 use crate::ports::command::{Cmd, CommandError, CommandRunner};
@@ -94,44 +96,6 @@ pub enum InstallError {
     },
 }
 
-/// What this run is installing.
-///
-/// The archive and the list are parameters rather than constants for the same
-/// reason [`ArchiveSource`] is: the pipeline is the part worth testing, and a
-/// pipeline wired directly to the shipped list could only be tested by
-/// installing five gigabytes.
-pub struct Plan {
-    pub source: ArchiveSource,
-    /// Oldest tree `pacman -Syuu` can still bring up to `source.version`.
-    /// Alongside the source for the same reason: it is part of what this build
-    /// ships, and the update matrix is worth testing without a real tree.
-    pub min_compatible: String,
-    pub list: PackageList,
-    pub mounts: fstab::Mounts,
-    /// Install every package in the list again, whether or not it is already
-    /// there. What `install --force` sets, and what a moved installation asks
-    /// for.
-    pub force: bool,
-}
-
-impl Plan {
-    /// What this build of ProxSpace installs.
-    pub fn shipped(paths: &Paths) -> Result<Plan, InstallError> {
-        Ok(Plan {
-            source: ArchiveSource::msys2(),
-            min_compatible: msys2::MSYS2_MIN_COMPATIBLE.to_string(),
-            list: PackageList::shipped()?,
-            mounts: fstab::Mounts::for_paths(paths),
-            force: false,
-        })
-    }
-
-    pub fn forced(mut self, force: bool) -> Plan {
-        self.force = force;
-        self
-    }
-}
-
 /// Everything the steps need but never change.
 pub(crate) struct Env<'a> {
     pub(crate) runner: &'a dyn CommandRunner,
@@ -176,7 +140,7 @@ pub fn ensure_ready(
     state: &mut State,
     plan: &Plan,
 ) -> Result<(), InstallError> {
-    msys2::ensure_tree(http, ui, paths, state, &plan.source)?;
+    provision::ensure_tree(http, ui, paths, state, &plan.source)?;
 
     let env = Env {
         runner,
@@ -188,7 +152,7 @@ pub fn ensure_ready(
     // Every run, not once: it is idempotent, it costs two external calls, and
     // it is what repairs a tree whose `/etc/fstab` or `/etc/passwd` went stale
     // — after a Windows account change, for instance.
-    let prepared = msys2::prepare(runner, ui, paths, &plan.mounts)?;
+    let prepared = provision::prepare(runner, ui, paths, &plan.mounts)?;
     if prepared.changed_anything() {
         ui.detail("the msys2 tree was brought up to date with this ProxSpace");
     }
@@ -311,7 +275,7 @@ fn bootstrap(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
         .run(
             env.ui,
             &Cmd::new(&bash)
-                .envs(msys2::tool_env(&env.tree()))
+                .envs(crate::infra::msys2::tool_env(&env.tree()))
                 .arg("-l")
                 .arg("-c")
                 .arg("exit")
@@ -558,7 +522,7 @@ fn finish(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
             .run(
                 env.ui,
                 &Cmd::new(&python)
-                    .envs(msys2::tool_env(&env.tree()))
+                    .envs(crate::infra::msys2::tool_env(&env.tree()))
                     .args(["-m", "pip", "install"])
                     .args(PIP_EXTRAS.iter().copied())
                     // msys2's python is an externally managed environment

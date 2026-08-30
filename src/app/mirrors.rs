@@ -282,7 +282,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use super::*;
-    use crate::infra::msys2::MSYSTEM;
+    use crate::core::msys2::MSYSTEM;
     use crate::ports::command::Output;
     use crate::ui::UiOptions;
     use crate::ui::logging::Logger;
