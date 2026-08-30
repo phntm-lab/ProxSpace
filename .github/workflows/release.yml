@@ -1,0 +1,91 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: windows-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      endsWith(github.event.head_commit.message, '[release]')
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Lints
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          version=$(awk -F '"' '/^version = /{print $2; exit}' Cargo.toml)
+          if [ -z "$version" ]; then
+            echo "no version in Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Resources
+        shell: pwsh
+        run: |
+          $exe = 'target/release/proxspace.exe'
+          $product = (Get-Item $exe).VersionInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($product)) {
+            throw "$exe has no version resource: the build found no resource compiler"
+          }
+          $expected = '${{ steps.version.outputs.version }}'
+          if ($product.Trim() -ne $expected) {
+            throw "$exe says ProductVersion $product, Cargo.toml says $expected"
+          }
+          Write-Host "version resource: $product"
+
+      - name: Release notes
+        id: notes
+        shell: bash
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          awk -v version="$version" '
+            $0 ~ "^## " version "([ \t]|$)" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          else
+            rm -f notes.md
+            echo "CHANGELOG.md has no section for $version; using GitHub's generated notes"
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ProxSpace ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.notes.outputs.generated == 'false' && 'notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.generated == 'true' }}
+          files: target/release/proxspace.exe
+          fail_on_unmatched_files: true
