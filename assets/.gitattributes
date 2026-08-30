@@ -1,3 +1,8 @@
 # The shell scripts and configs here are read by bash inside msys2:
 # a CRLF ending would become part of the last argument on the line.
 * text eol=lf
+
+# The icon is not text. Normalising it strips a CR out of the pixel data: the
+# offsets in its directory stop matching the file, `rc.exe` refuses it, and the
+# executable ships without an icon.
+*.ico binary
