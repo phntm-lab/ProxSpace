@@ -290,31 +290,34 @@ two stop agreeing.
 The logic lives in `src/lib.rs` rather than in `main.rs` so the integration
 tests can drive it directly instead of only through the command line.
 
-| Module | What it owns |
-|---|---|
-| `paths` | Where everything is on disk; every other module asks it rather than joining paths itself |
-| `command` | The only way out to another program |
-| `http`, `download` | The only way out to the network, and resumable fetching over it |
-| `archive` | Unpacking what was fetched, and removing a tree again |
-| `assets` | The files ProxSpace puts inside the tree (see below) |
-| `packages`, `pacman` | The package set, installing it, and the pin that has to survive an upgrade |
-| `msys2` | Which msys2 this build installs and getting it intact; `fstab`, `procs`, `shell`, `userdb` under it |
-| `preflight` | Checks run before the environment is touched (path characters, disk space) |
-| `mirrors` | Which servers pacman downloads from, and in what order |
-| `install` | The pipeline that puts all of it together, and `repair` |
-| `update` | Bringing an installed environment forward to this build |
-| `release` | Whether a newer ProxSpace has been published |
-| `clean` | Undoing the install without touching anything the user made |
-| `autobuild` | Building every proxmark3 checkout and packing the results |
-| `info` | What the finished environment turned out to be |
-| `state` | The install pipeline and its persisted state (`proxspace.state.json`) |
-| `ui`, `logging`, `interrupt` | Every message the user sees, the log it is mirrored to, Ctrl+C |
-| `cli` | The command tree |
+The modules sit in layers, and a layer may only name itself or a layer further
+in:
 
-Two rules hold the shape together: nothing runs an external program except
-through `command::CommandRunner`, and nothing reaches the network except through
-`http`. Both are traits with fakes in tests, which is why the suite runs
-offline.
+| Layer | Modules | What it holds |
+|---|---|---|
+| `core` | `paths`, `state`, `packages`, `plan`, `update`, `versions`, `preflight`, `pacman`, `assets`, `fstab`, `userdb`, `msys2` | Data and decisions: where things go, what the state file means, which packages and which msys2 this build installs, what an update does to a tree, what `pacman.conf` should say. Reachable with no disk, no network and no subprocess |
+| `ui` | `ui`, `logging`, `interrupt` | Every message the user sees, the log it is mirrored to, Ctrl+C |
+| `ports` | `command`, `http` | The two ways out of the process that have a second implementation in tests: running another program, and the network |
+| `infra` | `process`, `http`, `download`, `archive`, `assets`, `paths`, `preflight`, `state`, `pacman`, `msys2` | Everything that actually touches the disk, the network or another program: spawning it, fetching and unpacking, writing the assets, the account files and `pacman.conf`, reading the state file back |
+| `app` | `install`, `repair`, `provision`, `update`, `clean`, `autobuild`, `info`, `mirrors`, `release` | What each command does, stage by stage |
+| `cli` | `args`, `dispatch` | The command tree clap parses, and the one `match` every command goes through |
+
+Several names appear twice — `assets`, `paths`, `preflight`, `state`, `pacman`,
+`msys2`, `http`. That is the split, not a duplicate: in `core` the module says
+what the answer is, in `infra` it reads or writes the file that carries it.
+`core::pacman` decides what `pacman.conf` should look like with our pin in it;
+`infra::pacman::conf` writes that file.
+
+`core` and `ui` are peers at the innermost rank and neither may name the other:
+the decisions must not know how they are shown, and the screen must not know
+what is being decided. `tests/layers.rs` reads `src/` and enforces all of this
+— in a `use`, in an inline path and in a doc link alike.
+
+Two more rules hold the shape together: nothing runs an external program except
+through `ports::command::CommandRunner`, and nothing reaches the network except
+through `ports::http::HttpClient`. Both are traits with fakes in tests, which is
+why the suite runs offline. Everything else that leaves the process has no
+second implementation and no trait.
 
 The install pipeline is a ladder of stages recorded in the state file —
 `NotInstalled → Downloaded → Extracted → Bootstrapped → CoreUpdated →
@@ -328,8 +331,9 @@ order.
 covering one seam: `install_flow` (the pipeline end to end against fakes),
 `cli`, `state`, `archive`, `update_matrix` (every installed-version × build
 combination and what it decides), `download`, `provision`, `prepare`,
-`resources`. Fixtures — a real `pacman.conf`, `fstab` samples — are in
-`tests/fixtures/`.
+`resources`, `docs` (the command tables of both READMEs against the clap tree),
+`release_tag`, and `layers` (the dependency rule above). Fixtures — a real
+`pacman.conf`, `fstab` samples — are in `tests/fixtures/`.
 
 Tests are named as sentences about behaviour, not after the function under
 test, and each one states a decision the code makes. Please keep it that way.

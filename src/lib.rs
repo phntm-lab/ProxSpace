@@ -11,19 +11,32 @@
 //!
 //! # Layers
 //!
-//! The modules are grouped into layers, and a layer may only use the layers
-//! below it:
+//! The modules sit in layers, and a layer may only name itself or a layer
+//! further in:
 //!
-//! - [`core`] — data and decisions, reachable with no disk, network or
-//!   subprocess; uses nothing else here
+//! - [`core`] — data and decisions: where things go, what the state file means,
+//!   which packages and which msys2 this build installs, what an update does to
+//!   a tree. Reachable with no disk, no network and no subprocess, and it names
+//!   no other layer
 //! - [`ui`] — every message the user sees, the log it is mirrored to, and
-//!   Ctrl+C; uses nothing else here
-//! - [`ports`] — the traits for leaving the process: running another program,
-//!   talking to the network
+//!   Ctrl+C. Names no other layer either
+//! - [`ports`] — the two ways out of the process that have a second
+//!   implementation in tests: running another program, and the network
 //! - [`infra`] — the adapters behind those traits, and everything else that
 //!   touches the disk or the msys2 tree
 //! - [`app`] — what each command does, stage by stage
 //! - [`cli`] — the command tree clap parses, and the dispatcher
+//!
+//! Several module names appear in two layers — `assets`, `paths`, `preflight`,
+//! `state`, `pacman`, `msys2`, `http`. That is the split rather than a
+//! duplicate: in [`core`] the module says what the answer is, in [`infra`] it
+//! reads or writes the file that carries it.
+//!
+//! `core` and `ui` are peers at the innermost rank and neither may name the
+//! other: the decisions must not know how they are shown, and the screen must
+//! not know what is being decided. `tests/layers.rs` reads `src/` and enforces
+//! all of this, counting a `crate::` path in a doc link exactly as it counts a
+//! `use`.
 
 pub mod app;
 pub mod cli;
