@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Embedded in proxspace.exe by build.rs.
+
+  Two things are worth stating rather than inheriting:
+
+  - asInvoker. Windows guesses that an un-manifested executable is an installer
+    when its file name or its version resource mentions "setup", "install",
+    "update" or "patch", and asks for elevation. ProxSpace is none of those and
+    needs none of it — everything it writes goes next to the executable — but
+    it is exactly the kind of program people rename to `proxspace-setup.exe`
+    before putting it on a download page.
+  - longPathAware. The msys2 tree is deep, and a build inside it goes deeper.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 and 11: the only versions this is built for. -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+</assembly>

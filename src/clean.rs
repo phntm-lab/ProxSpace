@@ -19,7 +19,7 @@ use crate::command::CommandRunner;
 use crate::download;
 use crate::msys2::procs::{self, ProcsError};
 use crate::msys2::{ArchiveSource, procs::Stopped};
-use crate::pacman::{Pacman, PacmanError};
+use crate::pacman::{Cache, Pacman, PacmanError};
 use crate::paths::Paths;
 use crate::state::{State, StateError};
 use crate::ui::{Ui, UiError};
@@ -71,7 +71,7 @@ pub fn cache(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths) -> Result<(), C
     let tree = require_tree(paths)?;
 
     ui.step("removing downloaded packages from the pacman cache");
-    Pacman::new(&tree).clean_cache(runner, ui)?;
+    Pacman::new(&tree).clean_cache(runner, ui, Cache::All)?;
     ui.success("the package cache is empty");
     Ok(())
 }
@@ -280,7 +280,7 @@ mod tests {
 
         let calls = fake.0.lock().unwrap().clone();
         assert!(
-            calls.iter().any(|call| call.contains("-Sc")),
+            calls.iter().any(|call| call.contains("-Scc")),
             "got: {calls:?}"
         );
         assert!(paths.msys2().is_dir(), "`--cache` must not remove the tree");

@@ -9,11 +9,6 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
 
-/// Exit code for a subcommand that exists but is not implemented yet.
-/// Distinct from 1 so that scripts can tell "this failed" from "this is not
-/// built yet". Usage errors are clap's own exit code 2.
-pub const EXIT_NOT_IMPLEMENTED: i32 = 3;
-
 #[derive(Debug, Parser)]
 #[command(
     name = "proxspace",

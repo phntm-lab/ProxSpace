@@ -1,6 +1,18 @@
 //! Command-line entry point: parse, set up output and logging, dispatch.
 //!
 //! Everything of substance lives in the `proxspace` library next to this file.
+//!
+//! Exit codes, which are part of what this binary promises to scripts:
+//!
+//! - `0` — it did what it was asked;
+//! - `1` — it failed, and said why on stderr and in the log;
+//! - `2` — the command line itself was wrong (clap's own code);
+//! - `130` — stopped by Ctrl+C, the shell convention of 128 + SIGINT.
+//!
+//! `shell`, `exec` and `autobuild` hand back the exit code of the program they
+//! ran instead, which is what makes them usable in a script; a build that exits
+//! 1 is therefore indistinguishable from ProxSpace failing to start it, and
+//! that is the trade the passthrough is worth.
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -8,8 +20,9 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::Parser;
 
+use proxspace::autobuild;
 use proxspace::clean::{self, Scope};
-use proxspace::cli::{Cli, Command, EXIT_NOT_IMPLEMENTED, MirrorsAction};
+use proxspace::cli::{Cli, Command, MirrorsAction};
 use proxspace::command::ProcessRunner;
 use proxspace::http::UreqClient;
 use proxspace::info;
@@ -40,7 +53,18 @@ fn main() -> ExitCode {
             1
         }
     };
-    ExitCode::from(code as u8)
+    ExitCode::from(exit_code(code))
+}
+
+/// Narrow an exit code to the byte a process can actually return.
+///
+/// Only the passthrough codes of `shell`, `exec` and `autobuild` can be
+/// anything else, and on Windows they can be wild: a program killed by an
+/// access violation exits with `0xC0000005`, which truncated to a byte is `5` —
+/// a number that means "it worked, mostly" to whatever reads it. Anything that
+/// does not fit becomes a plain failure instead.
+fn exit_code(code: i32) -> u8 {
+    u8::try_from(code).unwrap_or(1)
 }
 
 /// Print an error and its full cause chain to stderr and to the log.
@@ -110,15 +134,20 @@ fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
     let mut state = loaded.state;
     ui.detail(&format!("install state: {}", state.stage));
 
-    dispatch(&command, &ui, &paths, &mut state)
-}
-
-/// How far [`ensure_environment`] got.
-enum Ready {
-    Yes,
-    /// Stopped by Ctrl+C. Not an error: the state file records what did finish,
-    /// and the next run carries on from there.
-    Interrupted,
+    match dispatch(&command, &ui, &paths, &mut state) {
+        Ok(code) => Ok(code),
+        // Ctrl+C reaches whichever step was running as an ordinary error — a
+        // download that stopped, a pacman that was killed with the console it
+        // shared with us. Turning that into the interrupted code here, once,
+        // is what keeps every command agreeing on what a stopped run is;
+        // whatever did finish is already in the state file, and the next run
+        // carries on from there.
+        Err(error) if interrupt::requested() => {
+            ui.detail(&format!("stopped: {error}"));
+            Ok(EXIT_INTERRUPTED)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// Bring the environment to the point where it can be used.
@@ -126,18 +155,14 @@ enum Ready {
 /// Shared by `install` and `shell` because they differ only in what happens
 /// afterwards — the automaton that gets there is the same one, and running it
 /// before the shell is what removes the two-launch dance of `runme64.bat`.
-fn ensure_environment(ui: &Ui, paths: &Paths, state: &mut State, force: bool) -> Result<Ready> {
+///
+/// A run stopped by Ctrl+C comes back as an error and stops the caller with
+/// `?`, which is what keeps a shell from being started on top of a half-built
+/// environment; [`run`] turns it into the interrupted exit code.
+fn ensure_environment(ui: &Ui, paths: &Paths, state: &mut State, force: bool) -> Result<()> {
     let plan = Plan::shipped(paths)?.forced(force);
-    match install::ensure_ready(&UreqClient::new(), &ProcessRunner, ui, paths, state, &plan) {
-        Ok(()) => Ok(Ready::Yes),
-        // Ctrl+C surfaces as whichever step noticed it first; the state file
-        // already says how far the install got.
-        Err(error) if interrupt::requested() => {
-            ui.detail(&format!("stopped: {error}"));
-            Ok(Ready::Interrupted)
-        }
-        Err(error) => Err(error.into()),
-    }
+    install::ensure_ready(&UreqClient::new(), &ProcessRunner, ui, paths, state, &plan)?;
+    Ok(())
 }
 
 fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Result<i32> {
@@ -149,32 +174,30 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Res
             Ok(0)
         }
 
-        Command::Install { force } => match ensure_environment(ui, paths, state, *force)? {
-            Ready::Yes => Ok(0),
-            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
-        },
+        Command::Install { force } => {
+            ensure_environment(ui, paths, state, *force)?;
+            Ok(0)
+        }
 
         // The `runme64.bat` case, and the reason the whole install pipeline is
         // resumable: whatever is left to do is done first, then the user gets
         // the shell they asked for. There is no second run of anything.
-        Command::Shell { args } => match ensure_environment(ui, paths, state, false)? {
-            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
-            Ready::Yes => {
-                ui.detail("starting the login shell");
-                // Its exit code becomes ours: `shell -- -c "make"` is then
-                // usable from a script.
-                Ok(shell::run(paths, args)?)
-            }
-        },
+        Command::Shell { args } => {
+            ensure_environment(ui, paths, state, false)?;
+            ui.detail("starting the login shell");
+            // Its exit code becomes ours: `shell -- -c "make"` is then usable
+            // from a script.
+            Ok(shell::run(paths, args)?)
+        }
 
         // The scriptable form of the above. It brings the environment up too:
         // a command that needs the toolchain needs it installed, and choosing
         // otherwise would mean an `exec` that fails differently depending on
         // what the user happened to have run before.
-        Command::Exec { command } => match ensure_environment(ui, paths, state, false)? {
-            Ready::Interrupted => Ok(EXIT_INTERRUPTED),
-            Ready::Yes => Ok(shell::exec(paths, command)?),
-        },
+        Command::Exec { command } => {
+            ensure_environment(ui, paths, state, false)?;
+            Ok(shell::exec(paths, command)?)
+        }
         // Two halves that are asked for together by default: the msys2 tree
         // itself, and the package list this build ships. `--check` prints what
         // each of them would do and touches nothing.
@@ -199,15 +222,8 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Res
                 state,
                 &Plan::shipped(paths)?,
                 &options,
-            ) {
-                Ok(Outcome::Done | Outcome::Checked) => Ok(0),
-                // As with an install: what finished is in the state file, and
-                // the next run carries on from there.
-                Err(error) if interrupt::requested() => {
-                    ui.detail(&format!("stopped: {error}"));
-                    Ok(EXIT_INTERRUPTED)
-                }
-                Err(error) => Err(error.into()),
+            )? {
+                Outcome::Done | Outcome::Checked => Ok(0),
             }
         }
 
@@ -237,12 +253,33 @@ fn dispatch(command: &Command, ui: &Ui, paths: &Paths, state: &mut State) -> Res
             Ok(0)
         }
 
-        other => {
-            if interrupt::requested() {
-                return Ok(EXIT_INTERRUPTED);
-            }
-            ui.error(&format!("`{}` is not implemented yet", other.name()));
-            Ok(EXIT_NOT_IMPLEMENTED)
+        // Like `shell`: the environment has to be there first, and the build
+        // script gets the console, so its exit code becomes ours.
+        Command::Autobuild => {
+            ensure_environment(ui, paths, state, false)?;
+            Ok(autobuild::run(&ProcessRunner, ui, paths)?)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_codes_this_binary_promises_are_returned_unchanged() {
+        assert_eq!(exit_code(0), 0);
+        assert_eq!(exit_code(1), 1);
+        assert_eq!(exit_code(2), 2);
+        assert_eq!(exit_code(EXIT_INTERRUPTED), 130);
+    }
+
+    #[test]
+    fn a_code_that_is_not_a_byte_becomes_a_plain_failure() {
+        // What a program killed by an access violation exits with. Truncated
+        // to a byte it would be 5, and 5 is not what happened.
+        assert_eq!(exit_code(0xC000_0005u32 as i32), 1);
+        assert_eq!(exit_code(256), 1);
+        assert_eq!(exit_code(-1), 1);
     }
 }

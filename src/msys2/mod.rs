@@ -316,6 +316,9 @@ pub fn sha256_file(path: &Path) -> io::Result<String> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; HASH_CHUNK_SIZE];
     loop {
+        // Per chunk: the archive is a hundred megabytes, and a Ctrl+C during
+        // the hash should stop it rather than be noticed once it is over.
+        interrupt::check().map_err(io::Error::other)?;
         let read = file.read(&mut buffer)?;
         if read == 0 {
             break;

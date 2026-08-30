@@ -17,6 +17,7 @@
 //! - [`download`] — fetching a file over it, resumably
 //! - [`archive`] — unpacking what was fetched
 //! - [`assets`] — the files ProxSpace puts inside that tree
+//! - [`autobuild`] — building every proxmark3 checkout and packing the results
 //! - [`packages`] — the package set the environment is made of
 //! - [`pacman`] — installing that set, and the pin that survives an upgrade
 //! - [`msys2`] — which msys2 this build installs, and getting it intact
@@ -35,6 +36,7 @@
 
 pub mod archive;
 pub mod assets;
+pub mod autobuild;
 pub mod clean;
 pub mod cli;
 pub mod command;

@@ -63,6 +63,17 @@ pub fn bash_path(tree: &Path) -> PathBuf {
     tree.join(BASH)
 }
 
+/// Variables inherited from Windows that are cleared before the shell starts.
+///
+/// `HOME` is the only one, and it earns its place: `/etc/profile` uses it when
+/// it is set, so a `HOME` left in the user's Windows environment — Git for
+/// Windows, Cygwin and several editors put one there — silently moves `$HOME`
+/// off `/pm3`. The shell then starts somewhere else, `~` means something else,
+/// and the proxmark3 client writes its logs into the user profile. `/etc/passwd`
+/// already says where home is, and generating that file is exactly so the tree
+/// can answer the question.
+pub const CLEARED: &[&str] = &["HOME"];
+
 /// Variables the login shell is started with.
 ///
 /// Everything else — `PATH`, `PKG_CONFIG_PATH`, `HOME`, the prompt — is left to
@@ -172,6 +183,9 @@ fn spawn(paths: &Paths, args: Vec<OsString>) -> Result<i32, ShellError> {
         .args(args)
         .envs(login_env())
         .current_dir(working_dir(paths));
+    for name in CLEARED {
+        command.env_remove(name);
+    }
 
     // For as long as the shell has the console, Ctrl+C is the user's way of
     // stopping whatever they just started in it. bash gets the signal too and
@@ -217,6 +231,15 @@ mod tests {
         for key in ["PATH", "HOME", "PS1", "PKG_CONFIG_PATH"] {
             assert!(value_of(&env, key).is_none(), "{key} must not be preset");
         }
+    }
+
+    /// Presetting `HOME` and clearing it are not the same thing: the shell has
+    /// to end up with the home `/etc/passwd` names, which happens only when
+    /// nothing arrives from Windows to override it.
+    #[test]
+    fn the_home_inherited_from_windows_is_cleared() {
+        assert!(CLEARED.contains(&"HOME"));
+        assert!(value_of(&login_env(), "HOME").is_none());
     }
 
     #[test]

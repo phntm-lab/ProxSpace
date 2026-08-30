@@ -1,6 +1,6 @@
 [package]
 name = "proxspace"
-version = "0.1.0"
+version = "3.12.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Proxmark3 development environment for Windows: a single binary that provisions and runs an msys2/UCRT64 toolchain"
@@ -16,12 +16,18 @@ indicatif = "0.18.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-sysinfo = { version = "0.36.1", default-features = false, features = ["system"] }
+sysinfo = { version = "0.39.6", default-features = false, features = [
+    "system",
+] }
 tar = "0.4.46"
 thiserror = "2.0.20"
 time = { version = "0.3.55", features = ["formatting", "parsing"] }
 ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
 xz2 = "0.1.7"
+
+[target.'cfg(windows)'.build-dependencies]
+# Icon, version resource and manifest for the executable (see build.rs).
+winresource = "0.1.31"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"

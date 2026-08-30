@@ -11,8 +11,6 @@ use tempfile::TempDir;
 
 /// Exit code clap uses for usage errors.
 const EXIT_USAGE: i32 = 2;
-/// Exit code for a subcommand that is not implemented yet.
-const EXIT_NOT_IMPLEMENTED: i32 = 3;
 
 fn proxspace() -> Command {
     Command::cargo_bin("proxspace").expect("the proxspace binary should be built")
@@ -107,16 +105,23 @@ fn every_run_writes_a_log() {
     assert!(log.contains("starting: info"), "unexpected log: {log}");
 }
 
+/// Every command now does the real thing. Checked on a path the environment
+/// cannot use, so that the run stops at preflight rather than provisioning a
+/// tree and building whatever it finds.
 #[test]
-fn unimplemented_commands_say_so_and_use_their_own_exit_code() {
-    let dir = base();
-    // Only `autobuild` is left: everything else does the real thing, and what
-    // it does is checked against a fake environment in `install_flow.rs`.
-    in_dir(dir.path())
+fn no_command_is_a_stub_any_more() {
+    let parent = base();
+    let spaced = parent.path().join("Program Files");
+    fs::create_dir(&spaced).unwrap();
+
+    in_dir(&spaced)
         .arg("autobuild")
         .assert()
-        .code(EXIT_NOT_IMPLEMENTED)
-        .stderr(predicate::str::contains("not implemented yet"));
+        .code(1)
+        .stderr(predicate::str::contains("not implemented").not());
+
+    let log = fs::read_to_string(spaced.join("proxspace.log")).unwrap();
+    assert!(log.contains("starting: autobuild"), "unexpected log: {log}");
 }
 
 /// A run with no arguments is the `runme64.bat` case and must dispatch to

@@ -20,11 +20,18 @@ fi
 
 # Where proxspace.exe is: one level above the msys2 tree, always, because the
 # tree is unpacked next to the binary. Derived at login rather than baked in at
-# install time, so moving the whole folder needs no regeneration. `cygpath -w /`
-# gives the tree in Windows form, the round trip back to POSIX resolves it
-# through the current mount table, and its parent is the install directory.
+# install time, so moving the whole folder needs no regeneration.
+#
+# The parent is taken in Windows form and converted afterwards. Going the other
+# way round does not work: the tree is itself the root of this mount table, so
+# `cygpath -u` on it gives `/`, whose parent is `/` again. `cygpath -w /` ends
+# in a backslash, which has to go before the last component can be dropped.
 if [ -z "$PROXSPACE_EXE" ]; then
-    export PROXSPACE_EXE="$(dirname "$(cygpath -u "$(cygpath -w /)")")/proxspace.exe"
+    ps_tree_win="$(cygpath -w /)"
+    ps_tree_win="${ps_tree_win%\\}"
+    ps_base_win="${ps_tree_win%\\*}"
+    export PROXSPACE_EXE="$(cygpath -u "$ps_base_win")/proxspace.exe"
+    unset ps_tree_win ps_base_win
 fi
 
 alias ls='ls -hF --color=auto'

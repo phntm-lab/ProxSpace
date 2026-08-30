@@ -260,6 +260,28 @@ impl Installed {
     }
 }
 
+/// How much of the download cache to remove.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cache {
+    /// `pacman -Sc`: only what is no longer installed. Run at the end of an
+    /// install, where it frees the superseded downloads and leaves the files
+    /// of the current versions — which is what lets a repair work offline.
+    Superseded,
+    /// `pacman -Scc`: everything, the current versions included. The only one
+    /// that frees anything on a tree that has just been installed, and the
+    /// reason it costs a download is exactly why it is asked for by hand.
+    All,
+}
+
+impl Cache {
+    fn flag(self) -> &'static str {
+        match self {
+            Cache::Superseded => "-Sc",
+            Cache::All => "-Scc",
+        }
+    }
+}
+
 /// Whether an install may skip packages that are already there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -454,13 +476,17 @@ impl Pacman {
         Ok(())
     }
 
-    /// `pacman -Sc`: drop the downloaded packages, which are gigabytes and are
-    /// of no further use once installed.
-    pub fn clean_cache(&self, runner: &dyn CommandRunner, ui: &Ui) -> Result<(), PacmanError> {
+    /// Drop downloaded packages, which are gigabytes on disk.
+    pub fn clean_cache(
+        &self,
+        runner: &dyn CommandRunner,
+        ui: &Ui,
+        scope: Cache,
+    ) -> Result<(), PacmanError> {
         self.run(
             runner,
             ui,
-            self.cmd("cleaning the package cache").arg("-Sc"),
+            self.cmd("cleaning the package cache").arg(scope.flag()),
             "cleaning the package cache",
         )?;
         Ok(())
@@ -718,6 +744,15 @@ mod tests {
 
     fn output(stdout: &str, stderr: &str) -> Output {
         Output::new(Some(1), stdout, stderr, "`pacman`")
+    }
+
+    /// The difference is the whole point of the two: `-Sc` on a tree that was
+    /// just installed frees nothing at all, because everything in the cache is
+    /// installed, and a `clean` that frees nothing is a `clean` that lies.
+    #[test]
+    fn the_two_cache_scopes_are_the_two_pacman_flags() {
+        assert_eq!(Cache::Superseded.flag(), "-Sc");
+        assert_eq!(Cache::All.flag(), "-Scc");
     }
 
     #[test]

@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::command::{Cmd, CommandError, CommandRunner};
+use crate::interrupt::{self, Interrupted};
 use crate::msys2::{self, shell};
 use crate::pacman::{Mode, Pacman, PacmanError};
 use crate::paths::Paths;
@@ -81,6 +82,8 @@ pub enum MirrorsError {
     Command(#[from] CommandError),
     #[error(transparent)]
     Pacman(#[from] PacmanError),
+    #[error(transparent)]
+    Interrupted(#[from] Interrupted),
 }
 
 /// The untouched copy kept beside a list.
@@ -112,6 +115,10 @@ pub fn rank(runner: &dyn CommandRunner, ui: &Ui, paths: &Paths) -> Result<(), Mi
     let bash = shell::bash_path(&tree);
 
     for list in LISTS {
+        // Each list is measured against every mirror it names, which
+        // takes long enough that stopping between the two is worth a
+        // checkpoint of its own.
+        interrupt::check()?;
         let path = dir.join(list.file);
         if !path.is_file() {
             ui.warn(&format!(

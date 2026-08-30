@@ -16,6 +16,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use thiserror::Error;
 
+use crate::interrupt::{self, Interrupted};
 use crate::logging::{Level, Logger};
 
 #[derive(Debug, Error)]
@@ -24,6 +25,8 @@ pub enum UiError {
     NotInteractive { prompt: String },
     #[error("cannot read the answer")]
     Prompt(#[source] std::io::Error),
+    #[error(transparent)]
+    Interrupted(#[from] Interrupted),
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -146,6 +149,10 @@ impl Ui {
     /// is an error rather than a guess: the questions guarded by this are
     /// destructive ones, such as deleting the msys2 tree.
     pub fn confirm(&self, prompt: &str, default: bool) -> Result<bool, UiError> {
+        // Before the question is even printed: a Ctrl+C that arrived
+        // during the step before this one is an answer already, and a
+        // prompt on top of it would sit there waiting for a second.
+        interrupt::check()?;
         if self.options.assume_yes {
             self.logger
                 .write(Level::Info, &format!("{prompt} -> yes (--yes)"));

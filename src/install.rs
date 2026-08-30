@@ -37,7 +37,7 @@ use crate::msys2::procs::{self, ProcsError};
 use crate::msys2::shell::BASH;
 use crate::msys2::{self, ArchiveSource, Msys2Error, PrepareError, RebaseError, fstab};
 use crate::packages::{PackageList, PackagesError, PkgSpec};
-use crate::pacman::{Mode, Pacman, PacmanError};
+use crate::pacman::{Cache, Mode, Pacman, PacmanError};
 use crate::paths::Paths;
 use crate::state::{PackagesInfo, Stage, State, StateError, timestamp};
 use crate::ui::Ui;
@@ -641,7 +641,10 @@ fn finish(env: &Env<'_>, state: &mut State) -> Result<(), InstallError> {
         // Gigabytes of `.pkg.tar.zst` that will never be needed again. Failing
         // to free them is not a reason to call a finished install unfinished.
         env.ui.step("cleaning up");
-        if let Err(error) = env.pacman.clean_cache(env.runner, env.ui) {
+        if let Err(error) = env
+            .pacman
+            .clean_cache(env.runner, env.ui, Cache::Superseded)
+        {
             env.ui
                 .warn(&format!("the package cache could not be cleaned ({error})"));
         }
