@@ -7,7 +7,7 @@
 //!
 //! Everything else that leaves the process — reading a file, writing one,
 //! looking at what is running — has no second implementation and no trait; it
-//! lives in [`crate::infra`] and is used from there directly.
+//! lives among the adapters and is used from there directly.
 //!
 //! Both traits take the [`crate::ui::Ui`]: what they do takes minutes and has
 //! to be watched while it happens, not reported once it is over.

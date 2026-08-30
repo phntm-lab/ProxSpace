@@ -108,7 +108,7 @@ impl Logger {
             return;
         };
 
-        let stamp = crate::core::state::timestamp();
+        let stamp = stamp();
         for line in message.lines() {
             // A write failure here (disk full, file deleted underneath us) is
             // deliberately swallowed: losing the log must not abort the work
@@ -145,6 +145,18 @@ fn rotate_if_large(path: &Path, backup_path: &Path) -> Option<String> {
             path.display()
         )),
     }
+}
+
+/// Current time as an RFC 3339 UTC timestamp.
+///
+/// Deliberately not shared with the timestamps in the state file, which happen
+/// to use the same format: the log is read by a person looking for what
+/// happened when, the state file is parsed by the next run, and neither has a
+/// say in how the other is written.
+fn stamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "unknown".to_string())
 }
 
 #[cfg(test)]
