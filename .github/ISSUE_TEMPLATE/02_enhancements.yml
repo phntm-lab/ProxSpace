@@ -1,0 +1,51 @@
+name: Enhancement
+description: Something ProxSpace already does, but should do better
+labels: ["type/enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is for what is already there and gets in the way: a message that
+        reads wrong, a default that is wrong more often than not, a flag that
+        should exist next to one that does, a step that takes longer than it
+        needs to.
+
+        Something ProxSpace does not do at all belongs in a feature request
+        instead.
+
+  - type: input
+    id: what
+    attributes:
+      label: What it is today
+      description: The command, the flag or the message, exactly as it is now.
+      placeholder: '`proxspace clean` empties the cache and says nothing about how much it freed'
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why that gets in the way
+      description: |
+        What happens because of it. A time it cost you something is worth more
+        here than an argument about taste.
+    validations:
+      required: true
+
+  - type: textarea
+    id: better
+    attributes:
+      label: What it should do instead
+      description: |
+        As concrete as you can make it — the wording you would use, the
+        default you would pick, the output you expected to see.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before reporting
+      options:
+        - label: I am on the latest release, and it still behaves this way
+          required: true

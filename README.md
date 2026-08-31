@@ -29,12 +29,12 @@ in the way of the update it was part of.
 
 ## Requirements
 
-| | |
-|---|---|
-| OS | 64-bit Windows |
-| Disk | ~10 GB free, 15 GB recommended |
-| Network | ~1 GB on the first run |
-| Path | only `A-Z a-z 0-9 . _ - \ /` and a drive letter — no spaces, no brackets, no non-ASCII |
+|         |                                                                                        |
+| ------- | -------------------------------------------------------------------------------------- |
+| OS      | 64-bit Windows                                                                         |
+| Disk    | ~10 GB free, 15 GB recommended                                                         |
+| Network | ~1 GB on the first run                                                                 |
+| Path    | only `A-Z a-z 0-9 . _ - \ /` and a drive letter — no spaces, no brackets, no non-ASCII |
 
 The path rule is enforced: nothing downstream quotes that path, so `proxspace`
 refuses to start rather than fail later in a way that is hard to diagnose.
@@ -58,28 +58,28 @@ refuses to start rather than fail later in a way that is hard to diagnose.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `proxspace` | Prepare the environment if needed, then open a shell |
-| `proxspace shell [-- args]` | The same, with arguments passed to the login shell |
-| `proxspace install [--force]` | Install the ProxSpace package set |
-| `proxspace update [flags]` | Update the environment |
-| `proxspace repair [--rebase]` | Reinstall packages over a broken tree |
-| `proxspace info` | Report versions, paths and toolchain state |
-| `proxspace mirrors rank\|restore` | Reorder or restore pacman mirrors |
-| `proxspace exec -- <cmd>` | Run one command inside the environment |
-| `proxspace autobuild` | Build every Proxmark3 checkout in `pm3/` |
-| `proxspace clean [--cache\|--all]` | Free disk space, or remove the environment |
+| Command                            | What it does                                         |
+| ---------------------------------- | ---------------------------------------------------- |
+| `proxspace`                        | Prepare the environment if needed, then open a shell |
+| `proxspace shell [-- args]`        | The same, with arguments passed to the login shell   |
+| `proxspace install [--force]`      | Install the ProxSpace package set                    |
+| `proxspace update [flags]`         | Update the environment                               |
+| `proxspace repair [--rebase]`      | Reinstall packages over a broken tree                |
+| `proxspace info`                   | Report versions, paths and toolchain state           |
+| `proxspace mirrors rank\|restore`  | Reorder or restore pacman mirrors                    |
+| `proxspace exec -- <cmd>`          | Run one command inside the environment               |
+| `proxspace autobuild`              | Build every Proxmark3 checkout in `pm3/`             |
+| `proxspace clean [--cache\|--all]` | Free disk space, or remove the environment           |
 
 Global flags, accepted before or after the subcommand:
 
-| Flag | Effect |
-|---|---|
-| `-y`, `--yes` | Answer every question affirmatively, for unattended runs |
-| `-q`, `--quiet` | Print only warnings, errors and command output |
-| `-v`, `--verbose` | Print the detail that normally only goes to the log |
-| `--no-color` | Never colourise output |
-| `--dir <path>` | Work on a folder other than the one holding the executable |
+| Flag              | Effect                                                     |
+| ----------------- | ---------------------------------------------------------- |
+| `-y`, `--yes`     | Answer every question affirmatively, for unattended runs   |
+| `-q`, `--quiet`   | Print only warnings, errors and command output             |
+| `-v`, `--verbose` | Print the detail that normally only goes to the log        |
+| `--no-color`      | Never colourise output                                     |
+| `--dir <path>`    | Work on a folder other than the one holding the executable |
 
 ### shell
 
@@ -98,13 +98,13 @@ folder or a half-finished install needs.
 
 Both halves run by default.
 
-| Flag | Effect |
-|---|---|
-| `--msys2` | The msys2 base system only (`pacman -Syuu`, or a full reinstall of a tree too old to upgrade in place) |
-| `--packages` | The ProxSpace package set only |
-| `--check` | Say what each half would do and change nothing |
-| `--reinstall-msys2` | Replace the tree even if it could be upgraded |
-| `--no-reinstall` | Report instead of replacing, whatever the version |
+| Flag                | Effect                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `--msys2`           | The msys2 base system only (`pacman -Syuu`, or a full reinstall of a tree too old to upgrade in place) |
+| `--packages`        | The ProxSpace package set only                                                                         |
+| `--check`           | Say what each half would do and change nothing                                                         |
+| `--reinstall-msys2` | Replace the tree even if it could be upgraded                                                          |
+| `--no-reinstall`    | Report instead of replacing, whatever the version                                                      |
 
 ### repair
 
@@ -179,11 +179,11 @@ under, so a moved environment needs that before it builds again.
 `MSYSTEM` is `UCRT64`, `$HOME` is `/pm3`, and `/opt/proxspace/bin` is on
 `$PATH`. That directory holds:
 
-| Name | What it is |
-|---|---|
-| `pm3`, `pm3-flash`, `pm3-flash-all`, `pm3-flash-bootrom`, `pm3-flash-fullimage` | Wrappers that run the script of the same name from the checkout you are standing in, so `pm3` works without `./` |
-| `proxspace` | The executable outside, reachable by name inside |
-| `ps-setup`, `ps-info`, `ps-repair`, `ps-upgrade`, `ps-rankmirrors`, `ps-restoremirrors` | The names the original ProxSpace used, each now a one-line shim for the matching subcommand |
+| Name                                                                                    | What it is                                                                                                       |
+| --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `pm3`, `pm3-flash`, `pm3-flash-all`, `pm3-flash-bootrom`, `pm3-flash-fullimage`         | Wrappers that run the script of the same name from the checkout you are standing in, so `pm3` works without `./` |
+| `proxspace`                                                                             | The executable outside, reachable by name inside                                                                 |
+| `ps-setup`, `ps-info`, `ps-repair`, `ps-upgrade`, `ps-rankmirrors`, `ps-restoremirrors` | The names the original ProxSpace used, each now a one-line shim for the matching subcommand                      |
 
 ## What gets installed
 
@@ -202,29 +202,29 @@ installed can be read back from the environment itself.
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | It did what it was asked |
-| `1` | It failed, and said why on stderr and in `proxspace.log` |
-| `2` | The command line was wrong |
-| `130` | Stopped by Ctrl+C |
+| Code  | Meaning                                                  |
+| ----- | -------------------------------------------------------- |
+| `0`   | It did what it was asked                                 |
+| `1`   | It failed, and said why on stderr and in `proxspace.log` |
+| `2`   | The command line was wrong                               |
+| `130` | Stopped by Ctrl+C                                        |
 
 `shell`, `exec` and `autobuild` hand back the exit code of the program they
 ran instead.
 
 ## Troubleshooting
 
-| Symptom | What to do |
-|---|---|
-| It refuses to start and names a character in the path | Move the folder somewhere without spaces, brackets or non-ASCII characters |
-| Downloads crawl, time out, or pacman cannot reach the mirrors | `proxspace mirrors rank`, then the command that failed; `mirrors restore` puts the shipped order back |
-| A package signature cannot be verified, or the databases are damaged | `proxspace repair` — it reinstalls everything over itself and refreshes the keyring and databases |
-| Builds fail at random with `unable to remap` or a `fork` error | Close every ProxSpace window, then `proxspace repair --rebase`. A cygwin DLL base-address collision; the original ran `rebaseall` on every start to avoid it |
-| pacman says the database is locked | Another pacman is running — close any other ProxSpace window. A lock left by a killed pacman is cleared automatically |
-| "The file is in use" on remove or replace | The message names the process holding it: an open shell, an editor, a build, `gpg-agent`, or an antivirus scanning the tree. Close it and run the command again |
-| An install or update was interrupted | Run the same command again. Every completed step is in `proxspace.state.json`, so it carries on instead of starting over |
-| `update --check` takes half a minute before printing | It asks GitHub whether a newer ProxSpace was released. With no network that wait is the TLS handshake timing out; the rest of the command works normally |
-| Anything else | `proxspace info` writes what the environment turned out to be to `proxspace-info.txt`; `proxspace.log` holds every message and the full output of every external command. Both are worth attaching to a bug report |
+| Symptom                                                              | What to do                                                                                                                                                                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| It refuses to start and names a character in the path                | Move the folder somewhere without spaces, brackets or non-ASCII characters                                                                                                                                         |
+| Downloads crawl, time out, or pacman cannot reach the mirrors        | `proxspace mirrors rank`, then the command that failed; `mirrors restore` puts the shipped order back                                                                                                              |
+| A package signature cannot be verified, or the databases are damaged | `proxspace repair` — it reinstalls everything over itself and refreshes the keyring and databases                                                                                                                  |
+| Builds fail at random with `unable to remap` or a `fork` error       | Close every ProxSpace window, then `proxspace repair --rebase`. A cygwin DLL base-address collision; the original ran `rebaseall` on every start to avoid it                                                       |
+| pacman says the database is locked                                   | Another pacman is running — close any other ProxSpace window. A lock left by a killed pacman is cleared automatically                                                                                              |
+| "The file is in use" on remove or replace                            | The message names the process holding it: an open shell, an editor, a build, `gpg-agent`, or an antivirus scanning the tree. Close it and run the command again                                                    |
+| An install or update was interrupted                                 | Run the same command again. Every completed step is in `proxspace.state.json`, so it carries on instead of starting over                                                                                           |
+| `update --check` takes half a minute before printing                 | It asks GitHub whether a newer ProxSpace was released. With no network that wait is the TLS handshake timing out; the rest of the command works normally                                                           |
+| Anything else                                                        | `proxspace info` writes what the environment turned out to be to `proxspace-info.txt`; `proxspace.log` holds every message and the full output of every external command. Both are worth attaching to a bug report |
 
 `proxspace.log` is kept across runs; once it passes 5 MB it is moved aside as
 `proxspace.log.old` and started again.
@@ -235,59 +235,38 @@ This is a rewrite of [Gator96100/ProxSpace](https://github.com/Gator96100/ProxSp
 which shipped msys2 inside the repository and drove it with `.bat` and shell
 scripts. The behaviour differs deliberately:
 
-| | |
-|---|---|
-| One executable | Instead of `runme64.bat`, `autobuild.bat`, `setup.cmd` and `setup/bin/*`; the old names still exist as shims inside the shell |
-| msys2 is downloaded, not vendored | The repository stays small and the base system is verified by checksum on the way in |
-| UCRT64 instead of MINGW64 | `MSYSTEM=UCRT64`, `PYTHONHOME=/ucrt64`, and the `mingw-w64-ucrt-x86_64-*` packages |
-| The install is an explicit resumable pipeline | The original relied on launching the shell twice, because `pacman -Syuu` cannot continue in a process whose msys2 runtime it just replaced. Each completed step is recorded in `proxspace.state.json` |
-| Nothing is installed from inside a login shell | The original's `09-proxspace_setup.post` ran pacman as part of logging in; here the hook only sets up the environment |
-| There is a log | Everything printed, plus the full output of every external command, is mirrored to `proxspace.log` |
-| `rebaseall` does not run on every start | It is available as `proxspace repair --rebase` |
-| There is a way back out | `proxspace clean` frees the cache or removes the environment without touching `pm3/` and `builds/` |
+|                                                |                                                                                                                                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One executable                                 | Instead of `runme64.bat`, `autobuild.bat`, `setup.cmd` and `setup/bin/*`; the old names still exist as shims inside the shell                                                                         |
+| msys2 is downloaded, not vendored              | The repository stays small and the base system is verified by checksum on the way in                                                                                                                  |
+| UCRT64 instead of MINGW64                      | `MSYSTEM=UCRT64`, `PYTHONHOME=/ucrt64`, and the `mingw-w64-ucrt-x86_64-*` packages                                                                                                                    |
+| The install is an explicit resumable pipeline  | The original relied on launching the shell twice, because `pacman -Syuu` cannot continue in a process whose msys2 runtime it just replaced. Each completed step is recorded in `proxspace.state.json` |
+| Nothing is installed from inside a login shell | The original's `09-proxspace_setup.post` ran pacman as part of logging in; here the hook only sets up the environment                                                                                 |
+| There is a log                                 | Everything printed, plus the full output of every external command, is mirrored to `proxspace.log`                                                                                                    |
+| `rebaseall` does not run on every start        | It is available as `proxspace repair --rebase`                                                                                                                                                        |
+| There is a way back out                        | `proxspace clean` frees the cache or removes the environment without touching `pm3/` and `builds/`                                                                                                    |
 
 ## Development
 
-Everything below is for someone changing ProxSpace itself. There is no separate
-`CONTRIBUTING.md`; this is it.
+Everything below is for someone changing ProxSpace itself. How to send a
+change — the checks, the commit style, what a pull request is expected to
+carry — is in [CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 ### Building and checking
 
-| Command | What it is for |
-|---|---|
-| `cargo build --release` | The shipped binary: thin LTO, one codegen unit, symbols stripped |
-| `cargo test` | Everything, in seconds — nothing here touches the network or a real msys2 tree |
-| `cargo test -- --ignored` | The three tests that do: the real base archive and a real mirror |
-| `cargo fmt --check` | Formatting, exactly as CI runs it |
-| `cargo clippy --all-targets -- -D warnings` | Lints; warnings are errors here and in CI |
+| Command                                     | What it is for                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------ |
+| `cargo build --release`                     | The shipped binary: thin LTO, one codegen unit, symbols stripped               |
+| `cargo test`                                | Everything, in seconds — nothing here touches the network or a real msys2 tree |
+| `cargo test -- --ignored`                   | The three tests that do: the real base archive and a real mirror               |
+| `cargo fmt --check`                         | Formatting, exactly as CI runs it                                              |
+| `cargo clippy --all-targets -- -D warnings` | Lints; warnings are errors here and in CI                                      |
 
 The toolchain floor is `rust-version` in `Cargo.toml` (1.85, edition 2024).
 
 `--dir <path>` makes every command work on a folder other than the one holding
 the executable, which is how a debug build is pointed at a scratch tree instead
 of at the one next to `target/debug/`.
-
-### Making a release
-
-1. Bump `version` in `Cargo.toml`.
-2. Add a `## <version>` section to `CHANGELOG.md`. The workflow publishes that
-   section as the release notes, and falls back to GitHub's generated list of
-   commits when there is none.
-3. Push to main with a commit message ending in `[release]`.
-
-`release.yml` then runs the same checks as CI, builds, verifies that the version
-resource made it into the executable, and publishes `proxspace.exe` under the
-tag `v<version>` as a release named `ProxSpace v<version>`. A push without the
-marker never reaches that job: it is checked by `ci.yml` and nothing more.
-
-`workflow_dispatch` publishes unconditionally and replaces the assets of an
-existing release, which is how a release is fixed without inventing a version
-number for the fix. The tag itself stays on the commit it was first cut from —
-it marks the version, not the build.
-
-The tag format is not free to change: `release::mention_newer` reads it back to
-decide whether a newer ProxSpace exists, and `tests/release_tag.rs` fails if the
-two stop agreeing.
 
 ### Module map
 
@@ -297,14 +276,14 @@ tests can drive it directly instead of only through the command line.
 The modules sit in layers, and a layer may only name itself or a layer further
 in:
 
-| Layer | Modules | What it holds |
-|---|---|---|
-| `core` | `paths`, `state`, `packages`, `plan`, `update`, `versions`, `preflight`, `pacman`, `assets`, `fstab`, `userdb`, `msys2` | Data and decisions: where things go, what the state file means, which packages and which msys2 this build installs, what an update does to a tree, what `pacman.conf` should say. Reachable with no disk, no network and no subprocess |
-| `ui` | `ui`, `logging`, `interrupt` | Every message the user sees, the log it is mirrored to, Ctrl+C |
-| `ports` | `command`, `http` | The two ways out of the process that have a second implementation in tests: running another program, and the network |
-| `infra` | `process`, `http`, `download`, `archive`, `assets`, `paths`, `preflight`, `state`, `pacman`, `msys2` | Everything that actually touches the disk, the network or another program: spawning it, fetching and unpacking, writing the assets, the account files and `pacman.conf`, reading the state file back |
-| `app` | `install`, `repair`, `provision`, `update`, `clean`, `autobuild`, `info`, `mirrors`, `release` | What each command does, stage by stage |
-| `cli` | `args`, `dispatch` | The command tree clap parses, and the one `match` every command goes through |
+| Layer   | Modules                                                                                                                 | What it holds                                                                                                                                                                                                                          |
+| ------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`  | `paths`, `state`, `packages`, `plan`, `update`, `versions`, `preflight`, `pacman`, `assets`, `fstab`, `userdb`, `msys2` | Data and decisions: where things go, what the state file means, which packages and which msys2 this build installs, what an update does to a tree, what `pacman.conf` should say. Reachable with no disk, no network and no subprocess |
+| `ui`    | `ui`, `logging`, `interrupt`                                                                                            | Every message the user sees, the log it is mirrored to, Ctrl+C                                                                                                                                                                         |
+| `ports` | `command`, `http`                                                                                                       | The two ways out of the process that have a second implementation in tests: running another program, and the network                                                                                                                   |
+| `infra` | `process`, `http`, `download`, `archive`, `assets`, `paths`, `preflight`, `state`, `pacman`, `msys2`                    | Everything that actually touches the disk, the network or another program: spawning it, fetching and unpacking, writing the assets, the account files and `pacman.conf`, reading the state file back                                   |
+| `app`   | `install`, `repair`, `provision`, `update`, `clean`, `autobuild`, `info`, `mirrors`, `release`                          | What each command does, stage by stage                                                                                                                                                                                                 |
+| `cli`   | `args`, `dispatch`                                                                                                      | The command tree clap parses, and the one `match` every command goes through                                                                                                                                                           |
 
 Several names appear twice — `assets`, `paths`, `preflight`, `state`, `pacman`,
 `msys2`, `http`. That is the split, not a duplicate: in `core` the module says
@@ -362,19 +341,20 @@ mistake in them fails the suite instead of shipping quietly.
 
 The original kept these next to the executable in `setup/` and mounted it as
 `/setup`. Here they live in `assets/`, are compiled into the binary with
-`include_str!`, and are written into the tree by `assets::install()`. Nothing
-but `msys2/`, `pm3/` and the bookkeeping files ever appears next to the binary,
-and the assets cannot be a version out of step with the code that uses them.
+`include_str!`, and are written into the tree by `infra::assets::install()`.
+Nothing but `msys2/`, `pm3/` and the bookkeeping files ever appears next to the
+binary, and the assets cannot be a version out of step with the code that uses
+them.
 
-| Source | Lands at | What it is |
-|---|---|---|
-| `assets/09-proxspace_setup.post` | `etc/post-install/09-proxspace_setup.post` | Sourced at the end of every login: `$PATH`, `MSYSTEM`, `PSVERSION` |
-| `assets/nsswitch.conf` | `etc/nsswitch.conf` | Makes cygwin read users from `/etc/passwd` only, never from Windows |
-| `assets/bin/pm3-wrapper` | `opt/proxspace/bin/pm3*` | One script under five names; dispatches on `basename $0` |
-| `assets/bin/ps-shim` | `opt/proxspace/bin/ps-*`, `proxspace` | One template per subcommand of the original's `setup/bin` |
-| `assets/packages.txt` | `opt/proxspace/packages.txt` | The package set, verbatim, so it can be read back from the tree |
-| `assets/autobuild.sh` | `opt/proxspace/autobuild.sh` | The build script `autobuild` hands over to |
-| `assets/autobuild/{official,rrg}/**` | `opt/proxspace/autobuild/**` | `.bat` files copied into every release archive; the only assets written with CRLF, and the only ones this binary never runs |
+| Source                               | Lands at                                   | What it is                                                                                                                  |
+| ------------------------------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `assets/09-proxspace_setup.post`     | `etc/post-install/09-proxspace_setup.post` | Sourced at the end of every login: `$PATH`, `MSYSTEM`, `PSVERSION`                                                          |
+| `assets/nsswitch.conf`               | `etc/nsswitch.conf`                        | Makes cygwin read users from `/etc/passwd` only, never from Windows                                                         |
+| `assets/bin/pm3-wrapper`             | `opt/proxspace/bin/pm3*`                   | One script under five names; dispatches on `basename $0`                                                                    |
+| `assets/bin/ps-shim`                 | `opt/proxspace/bin/ps-*`, `proxspace`      | One template per subcommand of the original's `setup/bin`                                                                   |
+| `assets/packages.txt`                | `opt/proxspace/packages.txt`               | The package set, verbatim, so it can be read back from the tree                                                             |
+| `assets/autobuild.sh`                | `opt/proxspace/autobuild.sh`               | The build script `autobuild` hands over to                                                                                  |
+| `assets/autobuild/{official,rrg}/**` | `opt/proxspace/autobuild/**`               | `.bat` files copied into every release archive; the only assets written with CRLF, and the only ones this binary never runs |
 
 Three are templates: `@PSVERSION@` in the hook and `@COMMAND@` in the shim are
 substituted from compile-time constants and a fixed table in `assets.rs`.
@@ -387,8 +367,8 @@ endings and marks scripts executable.
 
 ### Bumping msys2
 
-Every version-specific constant is in one block at the top of `src/msys2/mod.rs`,
-and bumping msys2 means editing that block as a unit:
+Every version-specific constant is in one block at the top of
+`src/core/msys2.rs`, and bumping msys2 means editing that block as a unit:
 
 1. Pick the newest `msys2-base-x86_64-<datestamp>.tar.xz` from
    <https://repo.msys2.org/distrib/x86_64/> and put its datestamp in

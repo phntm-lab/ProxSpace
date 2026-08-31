@@ -56,8 +56,8 @@ except where you downloaded it: only the
 link — it never downloads or replaces anything by itself.
 
 **The folder.** Everything ProxSpace creates lives next to the executable and
-nothing is written to `%APPDATA%`, `%TEMP%` or the user profile. It never asks for
-administrator rights, and a msys2 tree installed by one user is writable by
+nothing is written to `%APPDATA%`, `%TEMP%` or the user profile. It never asks
+for administrator rights, and a msys2 tree installed by one user is writable by
 whoever can write to that folder — put it somewhere only you can write to if
 that matters on your machine.
 

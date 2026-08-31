@@ -1,0 +1,120 @@
+# Which area/* label a pull request gets, from the files it touches.
+#
+# Applied by .github/workflows/labeler.yml with actions/labeler@v5. `sync-labels`
+# is off there, so this only ever adds labels: one applied by hand is never
+# taken away, and a label that stops matching stays until somebody removes it.
+#
+# The names here have to exist in labels.yml, which is what created them.
+
+"area/msys2":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/core/msys2.rs"
+          - "src/core/versions.rs"
+          - "src/infra/msys2/**"
+          - "src/app/provision.rs"
+
+"area/pacman":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/core/pacman.rs"
+          - "src/core/packages.rs"
+          - "src/infra/pacman/**"
+          - "src/app/mirrors.rs"
+          - "assets/packages.txt"
+
+"area/install":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/app/install.rs"
+          - "src/app/repair.rs"
+          - "src/app/update.rs"
+          - "src/app/clean.rs"
+          - "src/core/plan.rs"
+          - "src/core/state.rs"
+          - "src/core/update.rs"
+          - "src/infra/state.rs"
+          - "src/infra/download.rs"
+          - "src/infra/archive.rs"
+
+"area/shell":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/core/assets.rs"
+          - "src/core/fstab.rs"
+          - "src/core/userdb.rs"
+          - "src/infra/assets.rs"
+          - "assets/09-proxspace_setup.post"
+          - "assets/bin/**"
+          - "assets/nsswitch.conf"
+
+"area/autobuild":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/app/autobuild.rs"
+          - "assets/autobuild.sh"
+          - "assets/autobuild/**"
+
+"area/release":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/app/release.rs"
+          - ".github/workflows/release.yml"
+          - "tests/release_tag.rs"
+          - "CHANGELOG.md"
+
+"area/architecture":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/lib.rs"
+          - "src/ports/**"
+          - "src/*/mod.rs"
+          - "tests/layers.rs"
+
+"area/cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/cli/**"
+          - "src/main.rs"
+          - "src/ui/**"
+          - "src/app/info.rs"
+
+"area/platform":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "build.rs"
+          - "src/core/paths.rs"
+          - "src/core/preflight.rs"
+          - "src/infra/paths.rs"
+          - "src/infra/preflight.rs"
+          - "src/infra/process.rs"
+          - "assets/proxspace.ico"
+          - "assets/proxspace.manifest"
+
+"area/docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "README_RU.md"
+          - "LICENSE"
+          - ".github/*.md"
+          - ".github/ISSUE_TEMPLATE/**"
+
+"area/ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+          - ".github/labeler.yml"
+          - ".github/labels.py"
+          - ".github/labels.yml"
+
+"area/dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Cargo.toml"
+          - "Cargo.lock"
+
+"area/tests":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "tests/**"

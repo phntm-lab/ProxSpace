@@ -1,7 +1,7 @@
 # The package set ProxSpace installs, one pacman target per line.
 #
-# A line starting with # is a comment and a line with a URL on it is a package
-# file fetched directly, which is how a version is pinned. Everything else is a
+# A line starting with # or ; is a comment. A line with a URL on it is a package
+# file fetched directly, which is how a version is pinned; everything else is a
 # repository package name.
 
 # Toolbox: what a checkout needs before any of it is proxmark3's business.

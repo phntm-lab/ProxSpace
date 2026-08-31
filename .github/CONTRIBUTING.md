@@ -99,6 +99,11 @@ consider it executable otherwise.
 
 ## Commits and pull requests
 
+Work happens on `dev`, and that is where a pull request goes. `release` is not
+a branch to write on: merging `dev` into it is what publishes a release, so
+anything landing there is already finished and already has its version bumped
+in `Cargo.toml` and its section in `CHANGELOG.md`.
+
 Write the subject line as an instruction to the codebase, in one line, without
 a trailing full stop: "Take the running command with us when we quit", "Make
 the dependency rule a test". The body, if there is one, is prose — paragraphs

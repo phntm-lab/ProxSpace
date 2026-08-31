@@ -1,6 +1,6 @@
-name: Idea or improvement
-description: Something ProxSpace should do, or should do differently
-labels: ["type/enhancement"]
+name: Feature request
+description: Something ProxSpace does not do yet, and should
+labels: ["type/feature"]
 body:
   - type: markdown
     attributes:
@@ -10,23 +10,26 @@ body:
         the device — an idea in that direction is not out of the question, but
         say why it belongs here rather than in proxmark3.
 
+        If what you want already exists and is merely awkward, the enhancement
+        form fits better.
+
   - type: textarea
     id: problem
     attributes:
       label: What is awkward today
       description: The situation you keep running into. Not the solution yet.
       placeholder: |
-        Every time I move the folder to another drive, …
+        Every time I move the folder to another drive, ...
     validations:
       required: true
 
   - type: textarea
     id: idea
     attributes:
-      label: What you would like instead
+      label: What you would like ProxSpace to do
       description: |
-        A command, a flag, a different message — as concrete as you can make
-        it. Write the command line you wish existed.
+        As concrete as you can make it. Writing the command line you wish
+        existed, with its output, says more than a paragraph about it.
     validations:
       required: true
 

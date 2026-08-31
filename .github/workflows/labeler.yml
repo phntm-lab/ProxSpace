@@ -1,0 +1,27 @@
+name: labeler
+
+# Puts area/* labels on a pull request from the files it touches; the map is
+# .github/labeler.yml.
+#
+# pull_request_target runs the workflow from the base branch with a token that
+# can write, which is what makes labelling a pull request from a fork possible
+# at all. It is only safe because nothing here checks out or runs the code of
+# the pull request; keep it that way, and keep the permissions below as narrow
+# as they are.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          # Only add. A label somebody put on by hand is never taken off.
+          sync-labels: false
