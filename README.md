@@ -2,7 +2,11 @@
 
 # ProxSpace
 
-[![ci](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml/badge.svg)](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/phntm-lab/ProxSpace?style=for-the-badge&logo=github&color=blue)](https://github.com/phntm-lab/ProxSpace/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/phntm-lab/ProxSpace/total?style=for-the-badge&logo=github&color=success)](https://github.com/phntm-lab/ProxSpace/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/phntm-lab/ProxSpace/ci.yml?branch=dev&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml)
+[![GitHub License](https://img.shields.io/github/license/phntm-lab/ProxSpace?style=for-the-badge&color=orange)](LICENSE)
+[![Telegram](https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fphntmlab&style=for-the-badge&logo=telegram&logoColor=white&label=Telegram&color=5865F2)](https://t.me/phntmlab)
 
 A Proxmark3 development environment for Windows, as a single executable.
 
@@ -439,3 +443,12 @@ test that fails before it is not finished. New dependencies want a reason in the
 pull request: the tree is deliberately small and every crate in it is either
 doing something that cannot be written in an afternoon or is already a
 transitive dependency.
+
+## Licence
+
+MIT, in [LICENSE](LICENSE). This is a rewrite rather than a fork: none of the
+original ProxSpace is in it, and the batch files a build archive carries are
+ours, written to do what the originals did.
+
+Contributions are taken under the same licence; how to send one is in
+[CONTRIBUTING.md](.github/CONTRIBUTING.md).

@@ -4,13 +4,12 @@
 # Installed under every name the proxmark3 client ships (pm3, pm3-flash,
 # pm3-flash-all, pm3-flash-bootrom, pm3-flash-fullimage): all it does is spare
 # the user the leading `./` and say something useful when they are in the wrong
-# directory. Carried over from the original ProxSpace, with the arguments
-# forwarded — the original dropped them, which made `pm3 -p COM3` silently
-# ignore the port.
-FILENAME=$(basename -- "$0")
-if [ -f "$FILENAME" ]; then
-    "./$FILENAME" "$@"
-else
-    echo "The $FILENAME script does not exist in the current directory. Make sure you are in the Proxmark source directory."
+# directory. The original ProxSpace had a wrapper of the same shape; this one
+# forwards the arguments, which the original dropped, so that `pm3 -p COM3`
+# reaches the client with its port.
+name=$(basename -- "$0")
+if [ ! -f "$name" ]; then
+    echo "There is no $name here. Change into the directory of a proxmark3 checkout and try again." >&2
     exit 1
 fi
+exec "./$name" "$@"

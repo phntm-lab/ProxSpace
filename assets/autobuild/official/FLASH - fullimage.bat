@@ -1,63 +1,22 @@
 @echo off
-color 0a
-MODE CON COLS=80 LINES=36
-title FPGA FLASH FILE
+title ProxSpace - flash fullimage
 echo.
+echo   Flashing fullimage.elf to a Proxmark3 on COM5.
 echo.
+echo   The client directory next to this file has to hold flasher.exe and
+echo   fullimage.elf. It does if this archive was packed by ProxSpace and the
+echo   build it came from succeeded.
 echo.
-echo   ==========================================================================
-echo   ##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! O__O !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!##
-echo   ##======================================================================##
-echo   ##FULLIMAGE FLASHER BATCH FILE                                          ##
-echo   ##                                                                      ##
-echo   ##you will need to have this batch in \win32 folder                     ##
-echo   ##you will need to have flasher.exe in \win32 folder                    ##
-echo   ##you will need to have fullimage.elf in \firmware_win folder           ##
-echo   ##                                                                      ##
-echo   ##                                                                      ##
-echo   ##IF YOU HAVE THOSE REQUISITES HIT ANY BUTTON TO CONTINUE !             ##
-echo   ##----------------------------------------------------------------------##
-echo   ==========================================================================
-pause.
+echo   The port is written into this file. Edit the flasher line below if your
+echo   device is not on COM5.
+echo.
+pause
 
-cls
-echo.                
-echo                 ======================================
-echo                 FLASHING fullimage.elf, please wait...
-echo                 ======================================
 echo.
-
+echo   Flashing, do not unplug the device...
+echo.
 call client\setup.bat
 client\flasher.exe com5 -b client\fullimage.elf
 
-pause.
-
-cls
-title DONE
 echo.
-echo   ___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___
-echo  /   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \
-echo  \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/
-echo  /   \___/                                                   \___/   \
-echo  \___/                                                           \___/
-echo  /   \                                                           /   \
-echo  \___/                                                           \___/
-echo  /   \       FLASHING OPERATION SUCCESSFUL ! Enjoy it !          /   \
-echo  \___/                                                           \___/
-echo  /   \                                                           /   \
-echo  \___/                                                           \___/
-echo  /   \                                BATCH FILE BY ASPER        /   \
-echo  \___/                                                           \___/
-echo  /   \                                                           /   \
-echo  \___/                                                           \___/
-echo  /   \___                                                     ___/   \
-echo  \___/   \___     ___     ___     ___     ___     ___     ___/   \___/
-echo  /   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \
-echo  \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/
-echo      \___/   \___/   \___/   \___/   \___/   \___/   \___/   \___/
-
-echo.
-pause.
-cls
-MODE CON COLS=130 LINES=36
-cmd.exe
+pause

@@ -1,0 +1,81 @@
+name: Bug report
+description: Something ProxSpace does is wrong or does not work
+labels: ["type/bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two files answer most of what would otherwise be asked here.
+
+        **`proxspace-info.txt`** — run `proxspace info` and it is written next
+        to `proxspace.exe`. It works on a broken or missing install, so it is
+        worth running even when nothing else does.
+
+        **`proxspace.log`** — also next to `proxspace.exe`. Everything printed,
+        plus the full output of every command ProxSpace ran, is in it.
+
+        Both are plain text. Read them before attaching if you would rather not
+        share a path or a machine name; editing them out is fine.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected instead, if it is not obvious.
+      placeholder: |
+        `proxspace install` stops at "installing packages" and says …
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to get there
+      description: The commands you ran, in order, starting from an empty folder if you can.
+      placeholder: |
+        1. Put proxspace.exe in D:\pm3
+        2. Run it
+        3. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: info
+    attributes:
+      label: proxspace-info.txt
+      description: |
+        Paste it or attach the file. Run `proxspace info` to produce it.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: proxspace.log
+      description: |
+        Attach the file, or paste the part around the failure. It sits next to
+        `proxspace.exe`.
+    validations:
+      required: false
+
+  - type: input
+    id: path
+    attributes:
+      label: Where the folder is
+      description: |
+        The full path holding `proxspace.exe`. A space, a bracket or a
+        non-Latin character in it is behind a fair share of build failures.
+      placeholder: D:\pm3
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before reporting
+      options:
+        - label: I am on the latest release
+          required: true
+        - label: This is about ProxSpace itself, not about the proxmark3 client or its firmware
+          required: true

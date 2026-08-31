@@ -4,6 +4,7 @@ version = "3.12.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Proxmark3 development environment for Windows: a single binary that provisions and runs an msys2/UCRT64 toolchain"
+license = "MIT"
 publish = false
 
 [dependencies]

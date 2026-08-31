@@ -1,15 +1,20 @@
-##############################
-#         General            #
-##############################
+# The package set ProxSpace installs, one pacman target per line.
+#
+# A line starting with # is a comment and a line with a URL on it is a package
+# file fetched directly, which is how a version is pinned. Everything else is a
+# repository package name.
+
+# Toolbox: what a checkout needs before any of it is proxmark3's business.
 git
 make
 pkgconf
 mingw-w64-ucrt-x86_64-cmake
 procps-ng
 base-devel
-##############################
-#         Proxmark3          #
-##############################
+
+# Proxmark3: the client, the firmware cross-toolchain and what they link
+# against. The binutils line is pinned to a file because the repository version
+# breaks the proxmark3 firmware build.
 mingw-w64-ucrt-x86_64-gcc
 mingw-w64-ucrt-x86_64-arm-none-eabi-gcc
 mingw-w64-ucrt-x86_64-gdb-multiarch
@@ -31,9 +36,9 @@ mingw-w64-ucrt-x86_64-opencl-icd
 mingw-w64-ucrt-x86_64-lz4
 mingw-w64-ucrt-x86_64-libgd
 mingw-w64-ucrt-x86_64-openssl
-##############################
-#         ChameleonMini      #
-##############################
+
+# ChameleonMini: the AVR toolchain, kept because the original carried it and
+# uncommenting it is easier than finding out what it was called.
 #mingw-w64-ucrt-x86_64-dfu-programmer
 #mingw-w64-ucrt-x86_64-avrdude
 #mingw-w64-ucrt-x86_64-avr-binutils

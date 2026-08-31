@@ -2,7 +2,11 @@
 
 # ProxSpace
 
-[![ci](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml/badge.svg)](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/phntm-lab/ProxSpace?style=for-the-badge&logo=github&color=blue)](https://github.com/phntm-lab/ProxSpace/releases/latest)
+[![Total Downloads](https://img.shields.io/github/downloads/phntm-lab/ProxSpace/total?style=for-the-badge&logo=github&color=success)](https://github.com/phntm-lab/ProxSpace/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/phntm-lab/ProxSpace/ci.yml?branch=dev&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/phntm-lab/ProxSpace/actions/workflows/ci.yml)
+[![GitHub License](https://img.shields.io/github/license/phntm-lab/ProxSpace?style=for-the-badge&color=orange)](LICENSE)
+[![Telegram](https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fphntmlab&style=for-the-badge&logo=telegram&logoColor=white&label=Telegram&color=5865F2)](https://t.me/phntmlab)
 
 Среда разработки Proxmark3 для Windows — одним исполняемым файлом.
 
@@ -441,3 +445,12 @@ URL, поэтому оно обязано сохранять принятую в
 падающего до него, не закончено. Новая зависимость требует обоснования в самом
 pull request: дерево зависимостей намеренно маленькое, и каждый крейт в нём либо
 делает то, что за вечер не напишешь, либо и так приходит транзитивно.
+
+## Лицензия
+
+MIT, файл [LICENSE](LICENSE). Это переписывание, а не форк: кода оригинального
+ProxSpace здесь нет, а батники, которые кладутся в архив сборки, — свои,
+написанные так, чтобы делать то же, что делали оригинальные.
+
+Присланное принимается под той же лицензией; как присылать — в
+[CONTRIBUTING.md](.github/CONTRIBUTING.md).

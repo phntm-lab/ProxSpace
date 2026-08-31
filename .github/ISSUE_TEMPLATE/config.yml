@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or help getting started
+    url: https://t.me/Lemn4t
+    about: Ask in Telegram. Faster than an issue, and most questions turn out not to be bugs.
+  - name: Security report
+    url: https://github.com/phntm-lab/ProxSpace/blob/dev/.github/SECURITY.md
+    about: Do not open a public issue for a vulnerability. This says where to send it.
+  - name: Problem with the proxmark3 client or its firmware
+    url: https://github.com/RfidResearchGroup/proxmark3/issues
+    about: ProxSpace only builds and runs it. Anything the client itself does belongs upstream.

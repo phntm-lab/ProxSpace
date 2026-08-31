@@ -1,3 +1,4 @@
 /target
-
+.github/labels.py
+.github/labels.yml
 .claude

@@ -69,10 +69,11 @@ const SHIMS: &[(&str, &str)] = &[
     ("ps-upgrade", "update"),
 ];
 
-/// What goes into a release archive alongside the client: the batch files of
-/// the original, one set per fork. They are read by `cmd.exe` on a machine that
-/// has no msys2 on it, which is why they are the only assets written with CRLF
-/// and the only ones this binary never runs itself.
+/// What goes into a release archive alongside the client: batch files that
+/// start it and flash the device, one set per fork, in the shape the original
+/// ProxSpace put there. They are read by `cmd.exe` on a machine that has no
+/// msys2 on it, which is why they are the only assets written with CRLF and
+/// the only ones this binary never runs itself.
 const AUTOBUILD_TEMPLATES: &[(&str, &str, &str)] = &[
     (
         "opt/proxspace/autobuild/official",
@@ -349,13 +350,13 @@ mod tests {
         assert!(
             script
                 .contents
-                .contains("assetDir=/opt/proxspace/autobuild")
+                .contains("templates=/opt/proxspace/autobuild")
         );
-        assert!(script.contents.contains("$assetDir/rrg/*"));
-        assert!(script.contents.contains("$assetDir/official/*"));
+        assert!(script.contents.contains("\"$templates\"/rrg/*"));
+        assert!(script.contents.contains("\"$templates\"/official/*"));
         // Where the archives go is an argument, with the mount as the fallback
         // — a mount is not always visible to a process that has just started.
-        assert!(script.contents.contains(r#"copyDir="${1:-/builds}""#));
+        assert!(script.contents.contains(r#"archives="${1:-/builds}""#));
         // Recovery images are taken by extension: upstream has renamed them.
         assert!(script.contents.contains("recovery/*.bin"));
         // /setup is not mounted any more, and installing a package is the
@@ -378,7 +379,7 @@ mod tests {
         assert!(
             script
                 .contents
-                .contains("prefixDir=${MSYSTEM_PREFIX:-/ucrt64}")
+                .contains("prefix=${MSYSTEM_PREFIX:-/ucrt64}")
         );
         assert!(script.contents.contains(&format!(
             "[ \"$MSYSTEM\" != \"{}\" ]",
@@ -387,11 +388,11 @@ mod tests {
         // The DLLs beside the client and the Qt plugin must come from the same
         // prefix the client was linked against, or the archive fails on the
         // machine it is unpacked on rather than on this one.
-        assert!(script.contents.contains("grep \"=> $prefixDir\""));
+        assert!(script.contents.contains("grep \"=> $prefix\""));
         assert!(
             script
                 .contents
-                .contains("$prefixDir/share/qt6/plugins/platforms/qwindows.dll")
+                .contains("$prefix/share/qt6/plugins/platforms/qwindows.dll")
         );
     }
 

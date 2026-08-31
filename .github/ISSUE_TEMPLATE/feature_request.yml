@@ -1,0 +1,39 @@
+name: Idea or improvement
+description: Something ProxSpace should do, or should do differently
+labels: ["type/enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ProxSpace provisions a Proxmark3 build environment and runs a shell in
+        it. It does not wrap the proxmark3 client, manage firmware or talk to
+        the device — an idea in that direction is not out of the question, but
+        say why it belongs here rather than in proxmark3.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is awkward today
+      description: The situation you keep running into. Not the solution yet.
+      placeholder: |
+        Every time I move the folder to another drive, …
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you would like instead
+      description: |
+        A command, a flag, a different message — as concrete as you can make
+        it. Write the command line you wish existed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead now
+      description: The workaround, if you have one, and why it is not enough.
+    validations:
+      required: false
