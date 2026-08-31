@@ -8,6 +8,8 @@
 use std::io::{BufRead, BufReader, Read};
 use std::process::{self, Stdio};
 
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
 use crate::ports::command::{Cmd, CommandError, CommandRunner, Echo, Output};
 use crate::ui::Ui;
 use crate::ui::interrupt;
@@ -46,6 +48,10 @@ impl CommandRunner for ProcessRunner {
             program: cmd.program.clone(),
             source,
         })?;
+        // An immediate exit has to know what to take with it; the guard lives
+        // until this function returns, which is after the child has been waited
+        // for.
+        let _watched = interrupt::watch_child(child.id());
 
         // `take` cannot fail — both were just asked for as pipes — but an
         // `unwrap` here would be a panic in the one place that must not panic.
@@ -69,10 +75,13 @@ impl CommandRunner for ProcessRunner {
             source,
         })?;
 
-        // Asked after the process is gone, not before: on Windows Ctrl+C
-        // reaches the whole console group, so the child normally dies on its
-        // own and the pumps end. Reporting the interruption afterwards keeps
-        // the two facts — it stopped, and why — in the right order.
+        // Asked after the process is gone, not before. On Windows Ctrl+C
+        // reaches every process on the console, but what a child does with it
+        // is the child's business: `pacman` signalled while it is fetching
+        // packages carries on to the end of the transaction, and this waits for
+        // it, which is what "stopping at the next step" promises. Reporting the
+        // interruption afterwards keeps the two facts — it stopped, and why —
+        // in the right order.
         interrupt::check()?;
 
         Ok(Output::from_status(
@@ -82,6 +91,40 @@ impl CommandRunner for ProcessRunner {
             stderr,
             cmd.describe(),
         ))
+    }
+}
+
+/// Stop a process and everything it started.
+///
+/// What an immediate Ctrl+C hands to [`interrupt::install`]. Killing only the
+/// process this run spawned is not enough: `bash` running a build has a compiler
+/// under it, and either would be left orphaned, still holding the files that the
+/// next run needs.
+///
+/// Descendants are collected before anything is killed, because the parent links
+/// that identify them do not survive their parents.
+pub fn kill_tree(pid: u32) {
+    let mut system = System::new();
+    system.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+
+    let mut doomed = vec![Pid::from_u32(pid)];
+    let mut next = 0;
+    while next < doomed.len() {
+        let parent = doomed[next];
+        for (candidate, process) in system.processes() {
+            if process.parent() == Some(parent) && !doomed.contains(candidate) {
+                doomed.push(*candidate);
+            }
+        }
+        next += 1;
+    }
+
+    // Deepest first, so that nothing is still spawning replacements for the
+    // children already taken from it.
+    for pid in doomed.iter().rev() {
+        if let Some(process) = system.process(*pid) {
+            process.kill();
+        }
     }
 }
 
@@ -126,6 +169,7 @@ mod tests {
     use super::*;
 
     use std::sync::Arc;
+    use std::time::{Duration, Instant};
 
     use crate::ui::UiOptions;
     use crate::ui::logging::Logger;
@@ -144,6 +188,70 @@ mod tests {
     /// only program guaranteed to be on any machine this binary runs on.
     fn shell(script: &str) -> Cmd {
         Cmd::new("cmd").arg("/C").arg(script).quiet()
+    }
+
+    /// Poll the process table until `wanted` answers, or give up.
+    ///
+    /// The table is a snapshot, and a process that was just started is not in
+    /// the previous one; a single look would make this test fail for a reason
+    /// that has nothing to do with what it checks.
+    fn within_three_seconds(mut wanted: impl FnMut(&System) -> bool) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut system = System::new();
+        loop {
+            system.refresh_processes_specifics(
+                ProcessesToUpdate::All,
+                true,
+                ProcessRefreshKind::nothing(),
+            );
+            if wanted(&system) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn child_of(system: &System, parent: u32) -> Option<Pid> {
+        system
+            .processes()
+            .iter()
+            .find(|(_, process)| process.parent() == Some(Pid::from_u32(parent)))
+            .map(|(pid, _)| *pid)
+    }
+
+    #[test]
+    fn stopping_a_process_stops_what_it_started() {
+        // `ping` is the long-running grandchild: killing only the `cmd` that
+        // was spawned would leave it behind, holding whatever it holds, which
+        // is exactly the orphan this function exists to prevent.
+        let mut child = process::Command::new("cmd")
+            .args(["/C", "ping -n 60 127.0.0.1"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("cmd.exe is on every machine this runs on");
+        let parent = child.id();
+
+        let mut grandchild = None;
+        assert!(
+            within_three_seconds(|system| {
+                grandchild = child_of(system, parent);
+                grandchild.is_some()
+            }),
+            "`ping` never started, so there was nothing to orphan"
+        );
+        let grandchild = grandchild.expect("just asserted");
+
+        kill_tree(parent);
+
+        assert!(
+            within_three_seconds(|system| system.process(grandchild).is_none()),
+            "the grandchild outlived the process it was started from"
+        );
+        let _ = child.wait();
     }
 
     #[test]

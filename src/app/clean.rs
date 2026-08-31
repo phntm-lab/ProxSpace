@@ -41,8 +41,6 @@ pub enum Scope {
 pub enum CleanError {
     #[error("`{path}` is not there; there is nothing to clean")]
     TreeMissing { path: PathBuf },
-    #[error("nothing was removed")]
-    Refused,
     #[error(transparent)]
     Pacman(#[from] PacmanError),
     #[error(transparent)]
@@ -94,13 +92,28 @@ pub fn all(ui: &Ui, paths: &Paths, state: &mut State) -> Result<(), CleanError> 
         paths.pm3().display(),
         paths.builds().display()
     ));
+    // Declining is an answer, not a failure: this command exists to ask before
+    // it destroys anything, and a `no` means it did its job. Reporting it as an
+    // error would mean a red line, a pointer to the log and a non-zero exit for
+    // a user who chose correctly.
     if !ui.confirm("Remove the msys2 tree?", false)? {
-        return Err(CleanError::Refused);
+        ui.info("left as it is; nothing was removed");
+        return Ok(());
     }
 
     // The tree cannot be removed while a shell, a build or a gpg-agent still
     // has a file in it open — on Windows that is a hard error, not a warning.
-    let stopped: Stopped = procs::stop_holders(&tree, ui)?;
+    let stopped: Stopped = match procs::stop_holders(&tree, ui) {
+        Ok(stopped) => stopped,
+        // The same answer one question later, and the same reasoning.
+        Err(ProcsError::Refused { summary, verb }) => {
+            ui.info(&format!(
+                "left as it is; {summary} {verb} still using the tree"
+            ));
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     if !stopped.killed.is_empty() {
         ui.detail("everything using the tree has been stopped");
     }

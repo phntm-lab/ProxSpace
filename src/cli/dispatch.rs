@@ -23,7 +23,7 @@ use crate::core::state::{SCHEMA_VERSION, State};
 use crate::core::update::Reinstall;
 use crate::infra::http::UreqClient;
 use crate::infra::msys2::shell;
-use crate::infra::process::ProcessRunner;
+use crate::infra::process::{self, ProcessRunner};
 use crate::infra::state as state_file;
 use crate::ui::interrupt::{self, EXIT_INTERRUPTED};
 use crate::ui::logging::Logger;
@@ -54,7 +54,7 @@ pub fn run(cli: Cli, logger_out: &mut Arc<Logger>) -> Result<i32> {
         ui.warn(warning);
     }
 
-    if let Err(error) = interrupt::install(Arc::clone(&logger)) {
+    if let Err(error) = interrupt::install(Arc::clone(&logger), process::kill_tree) {
         ui.warn(&format!(
             "cannot install the Ctrl+C handler ({error}); interrupting will kill the process outright"
         ));

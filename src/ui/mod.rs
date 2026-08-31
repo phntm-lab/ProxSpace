@@ -13,7 +13,7 @@ pub mod interrupt;
 pub mod logging;
 
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -195,7 +195,7 @@ impl Ui {
                 .progress_chars("=> "),
         );
         bar.set_message(message.to_string());
-        bar
+        on_screen(bar)
     }
 
     /// Progress bar over a transfer measured in bytes.
@@ -225,7 +225,7 @@ impl Ui {
                 .progress_chars("=> "),
         );
         bar.set_message(message.to_string());
-        bar
+        on_screen(bar)
     }
 
     /// Progress over a number of things — files unpacked, packages installed.
@@ -248,7 +248,7 @@ impl Ui {
                 );
                 bar.set_message(message.to_string());
                 bar.enable_steady_tick(std::time::Duration::from_millis(120));
-                bar
+                on_screen(bar)
             }
         }
     }
@@ -265,8 +265,40 @@ impl Ui {
         );
         bar.set_message(message.to_string());
         bar.enable_steady_tick(std::time::Duration::from_millis(120));
-        bar
+        on_screen(bar)
     }
+}
+
+/// The most recent progress bar, so that something else can print past it.
+///
+/// A bar repaints its line whenever it advances. Anything written straight to
+/// stderr while one is running therefore ends up sharing that line with it, and
+/// the two overwrite each other — which is exactly what a Ctrl+C message did,
+/// arriving on a thread of its own in the middle of a download.
+static ON_SCREEN: Mutex<Option<ProgressBar>> = Mutex::new(None);
+
+/// Print while any progress bar is out of the way.
+///
+/// The slot holds the last bar made rather than only a running one: once a bar
+/// has finished, stepping aside for it costs nothing, and tracking every place
+/// that finishes one would be a bookkeeping job with a worse failure mode than
+/// the one it prevents.
+pub fn over_progress(print: impl FnOnce()) {
+    // A poisoned lock means a panic while printing; the message still matters
+    // more than the bar it might land on.
+    let bar = ON_SCREEN.lock().ok().and_then(|slot| slot.clone());
+    match bar {
+        Some(bar) => bar.suspend(print),
+        None => print(),
+    }
+}
+
+/// Remember a bar as the one now drawing, and hand it back.
+fn on_screen(bar: ProgressBar) -> ProgressBar {
+    if let Ok(mut slot) = ON_SCREEN.lock() {
+        *slot = Some(bar.clone());
+    }
+    bar
 }
 
 /// Program that started this one when it was double-clicked in Explorer.

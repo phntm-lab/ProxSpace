@@ -17,6 +17,10 @@ msys2 vendored inside it and a set of `.bat` and shell scripts around it.
 - A resumable install pipeline: every completed step is recorded in
   `proxspace.state.json`, so an interrupted install carries on instead of
   starting over.
+- Ctrl+C stops at the end of the step that is running, leaving the install
+  resumable and a partly downloaded archive to continue from; a second one
+  quits at once and takes the running command with it, so nothing is left
+  behind holding the package database.
 - `proxspace info`, which reports versions, paths, the toolchain and the
   machine, and writes the same text to `proxspace-info.txt` for bug reports. It
   is the one command that works on a broken or missing install.

@@ -162,10 +162,12 @@ fn attempt(
     let mut buffer = vec![0u8; CHUNK_SIZE];
     loop {
         // Between chunks, so Ctrl+C ends the download at a point where what is
-        // on disk is exactly what `received` says it is.
+        // on disk is exactly what `received` says it is. The bar goes rather
+        // than stays: a stop the user asked for needs no evidence left on
+        // screen, and a half-drawn bar is what the next message lands on.
         interrupt::check().inspect_err(|_| {
             let _ = file.flush();
-            bar.abandon();
+            bar.finish_and_clear();
         })?;
 
         let read = match response.body.read(&mut buffer) {

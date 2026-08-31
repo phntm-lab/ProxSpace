@@ -186,7 +186,9 @@ fn unpack_into(
     })?;
 
     for entry in iterator {
-        interrupt::check().inspect_err(|_| bar.abandon())?;
+        // Cleared rather than abandoned: the partial tree is thrown away
+        // anyway, so a bar frozen part-way is nothing to keep on screen.
+        interrupt::check().inspect_err(|_| bar.finish_and_clear())?;
 
         let mut entry = entry.map_err(|source| ExtractError::Corrupt {
             path: archive.to_path_buf(),

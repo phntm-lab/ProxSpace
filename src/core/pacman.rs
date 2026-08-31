@@ -111,8 +111,9 @@ impl Failure {
                  repositories have drifted apart, which is a bug in this build"
             }
             Failure::Locked => {
-                ": another pacman is running, or one was killed and left its lock \
-                 behind — close any open ProxSpace window and try again"
+                ": another pacman is running — close any other ProxSpace window and \
+                 run the same command again; a lock left behind by one that was \
+                 stopped is removed by the next run once nothing holds it"
             }
             Failure::StaleDatabase => {
                 ": the package databases are damaged — `proxspace repair` fetches \
