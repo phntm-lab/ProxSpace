@@ -1,6 +1,10 @@
 [English](README.md) · **Русский**
 
+<div align="center">
+
 # ProxSpace
+
+**Среда разработки Proxmark3 для Windows — одним исполняемым файлом.**
 
 [![Latest Release](https://img.shields.io/github/v/release/phntm-lab/ProxSpace?style=for-the-badge&logo=github&color=blue)](https://github.com/phntm-lab/ProxSpace/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/phntm-lab/ProxSpace/total?style=for-the-badge&logo=github&color=success)](https://github.com/phntm-lab/ProxSpace/releases)
@@ -8,7 +12,7 @@
 [![GitHub License](https://img.shields.io/github/license/phntm-lab/ProxSpace?style=for-the-badge&color=orange)](LICENSE)
 [![Telegram](https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fphntmlab&style=for-the-badge&logo=telegram&logoColor=white&label=Telegram&color=5865F2)](https://t.me/phntmlab)
 
-Среда разработки Proxmark3 для Windows — одним исполняемым файлом.
+</div>
 
 Положите `proxspace.exe` в пустую папку и запустите. Он скачает msys2,
 распакует его рядом с собой, настроит, установит тулчейн, нужный для сборки и

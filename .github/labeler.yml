@@ -4,7 +4,8 @@
 # is off there, so this only ever adds labels: one applied by hand is never
 # taken away, and a label that stops matching stays until somebody removes it.
 #
-# The names here have to exist in labels.yml, which is what created them.
+# The names here have to exist on the repository. They are maintained outside
+# it, with the label list and the script that applies it.
 
 "area/msys2":
   - changed-files:
@@ -105,8 +106,6 @@
       - any-glob-to-any-file:
           - ".github/workflows/**"
           - ".github/labeler.yml"
-          - ".github/labels.py"
-          - ".github/labels.yml"
 
 "area/dependencies":
   - changed-files:

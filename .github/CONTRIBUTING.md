@@ -26,6 +26,11 @@ These are exactly what CI runs, in the same order, and warnings are errors in
 both places. `cargo test -- --ignored` adds the three tests that go out to the
 network; run them if you touched downloading or mirrors.
 
+A pull request also gets built: a comment appears on it with `proxspace.exe`
+from your branch as a downloadable artifact, so that a change can be tried on a
+real machine and not only read. It is rebuilt, and the comment rewritten, on
+every push.
+
 The toolchain floor is `rust-version` in `Cargo.toml`. A change that needs a
 newer compiler needs that line raised in the same commit, and a reason.
 

@@ -1,6 +1,10 @@
 **English** · [Русский](README_RU.md)
 
+<div align="center">
+
 # ProxSpace
+
+**A Proxmark3 development environment for Windows, as a single executable.**
 
 [![Latest Release](https://img.shields.io/github/v/release/phntm-lab/ProxSpace?style=for-the-badge&logo=github&color=blue)](https://github.com/phntm-lab/ProxSpace/releases/latest)
 [![Total Downloads](https://img.shields.io/github/downloads/phntm-lab/ProxSpace/total?style=for-the-badge&logo=github&color=success)](https://github.com/phntm-lab/ProxSpace/releases)
@@ -8,7 +12,7 @@
 [![GitHub License](https://img.shields.io/github/license/phntm-lab/ProxSpace?style=for-the-badge&color=orange)](LICENSE)
 [![Telegram](https://img.shields.io/endpoint?url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fphntmlab&style=for-the-badge&logo=telegram&logoColor=white&label=Telegram&color=5865F2)](https://t.me/phntmlab)
 
-A Proxmark3 development environment for Windows, as a single executable.
+</div>
 
 Put `proxspace.exe` in an empty folder and run it. It downloads msys2, unpacks
 it next to itself, configures it, installs the toolchain needed to build and

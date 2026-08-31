@@ -1,0 +1,134 @@
+name: pr-comment
+
+# Posts the report `pr-build.yml` wrote as a comment on the pull request, and
+# edits that same comment on every later push instead of adding another one.
+#
+# It exists as a separate workflow because a pull request from a fork gives the
+# build a read-only token by design. A `workflow_run` workflow always runs the
+# copy of this file on the default branch, in the base repository's context, so
+# the write permission below is actually granted.
+#
+# Security: this job must not check out or run anything from the pull request.
+# Its inputs are a markdown file, which it treats strictly as text to post, and
+# a pull request number, which it does not trust at all — `pr-build` compiles
+# the branch, `build.rs` runs during that compile, and a hostile branch could
+# therefore write any number it likes into the artifact and aim this privileged
+# comment at another thread. The number is checked against the head commit of
+# the run that triggered this one, which comes from the event payload and
+# cannot be forged.
+#
+# Changes here only take effect once they are on the default branch: a
+# `workflow_run` workflow is never run from a pull request's own branch.
+on:
+  workflow_run:
+    workflows: [pr-build] # must match pr-build.yml's `name:`
+    types: [completed]
+
+# Cross-run artifact download needs `actions: read`, posting needs
+# `pull-requests: write`. Naming them at all sets every other scope to none.
+permissions:
+  actions: read
+  pull-requests: write
+
+# Serialised per triggering build, so that a re-run cannot race the
+# find-or-create below into two comments. Keyed on the run id rather than the
+# pull request number, which `workflow_run` does not carry for forks.
+concurrency:
+  group: pr-comment-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    name: Comment
+    runs-on: ubuntu-latest
+    # Only builds that can have produced a report: a manual run has no pull
+    # request, and a cancelled or skipped one has no artifact.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      github.event.workflow_run.conclusion != 'skipped'
+    steps:
+      # From the build's run, not this one. A missing or expired artifact is a
+      # warning below rather than a red job: there is nothing to fix in it.
+      - name: Download the report
+        id: report
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: pr-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Say nothing arrived
+        if: steps.report.outcome != 'success'
+        run: |
+          echo "::warning::pr-build uploaded no report (outcome=${{ steps.report.outcome }}), so there is nothing to comment."
+
+      - name: Post or update the comment
+        if: steps.report.outcome == 'success'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- proxspace-pr-build -->';
+
+            if (!fs.existsSync('pr_report.md') || !fs.existsSync('pr_number.txt')) {
+              core.warning('the report artifact is incomplete; nothing to post');
+              return;
+            }
+
+            const body = fs.readFileSync('pr_report.md', 'utf8');
+            if (!body.startsWith(marker)) {
+              core.setFailed('the report is missing its marker, so it could never be found again');
+              return;
+            }
+
+            const number = parseInt(fs.readFileSync('pr_number.txt', 'utf8').trim(), 10);
+            if (!Number.isInteger(number) || number < 1) {
+              core.setFailed('pr_number.txt does not hold a pull request number');
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+
+            // The number above came out of an artifact written by a job that
+            // compiled the branch, so it is the branch's word and not GitHub's.
+            // The head commit of the triggering run is GitHub's word. Post only
+            // where the two agree: that is the pull request that was built, and
+            // no other thread can be named.
+            const built = context.payload.workflow_run.head_sha;
+            let pull;
+            try {
+              ({ data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number }));
+            } catch (error) {
+              core.setFailed(`pull request #${number} could not be read: ${error.message}`);
+              return;
+            }
+            if (pull.head.sha !== built) {
+              core.setFailed(
+                `#${number} is at ${pull.head.sha} but this build ran ${built}; refusing to comment`,
+              );
+              return;
+            }
+
+            // One comment per pull request, edited in place. A new comment on
+            // every push would bury the conversation under build reports. Only
+            // this workflow's own comments are candidates: a comment quoting
+            // the marker is not one of ours to rewrite.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: number,
+              per_page: 100,
+            });
+            const mine = comments.find(
+              (comment) => comment.user.type === 'Bot' && comment.body?.includes(marker),
+            );
+
+            if (mine) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              core.info(`updated comment ${mine.id} on #${number}`);
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+              core.info(`commented on #${number}`);
+            }

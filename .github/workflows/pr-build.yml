@@ -1,0 +1,158 @@
+name: pr-build
+
+# Builds the release binary for every pull request and uploads it, so that a
+# change can be tried on a real machine instead of only read.
+#
+# What this is not: `ci.yml` still owns the checks (fmt, clippy, tests) and
+# `release.yml` still owns publishing. This job only produces an executable and
+# a report about it.
+#
+# The report is written to the job summary and uploaded as an artifact; the
+# comment on the pull request is posted by `pr-comment.yml`, which runs on
+# `workflow_run` with a token that can write. Doing it that way is what makes
+# the comment work for a pull request from a fork, where this workflow's token
+# is read-only by design.
+on:
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same pull request makes the previous build pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Name this build
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            sha="${{ github.event.pull_request.head.sha }}"
+            ref="${{ github.head_ref }}"
+          else
+            sha="${{ github.sha }}"
+            ref="${{ github.ref_name }}"
+          fi
+          # A branch name may hold anything a path may hold, and this ends up in
+          # an artifact name and in a shell variable; reduce it to a set that is
+          # inert in both.
+          safe=$(printf '%s' "$ref" | tr -c 'A-Za-z0-9._-' '-')
+          version=$(awk -F '"' '/^version = /{print $2; exit}' Cargo.toml)
+          echo "sha8=${sha:0:8}" >> "$GITHUB_OUTPUT"
+          echo "ref=$safe" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist=proxspace-$safe-${sha:0:8}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        id: build
+        run: cargo build --release
+
+      # The same check release.yml makes: a build that found no resource
+      # compiler produces a working but unmarked executable, and the only place
+      # that shows is here.
+      - name: Read the executable
+        id: exe
+        if: steps.build.outcome == 'success'
+        shell: pwsh
+        run: |
+          $exe = Get-Item 'target/release/proxspace.exe'
+          $product = $exe.VersionInfo.ProductVersion
+          if ([string]::IsNullOrWhiteSpace($product)) {
+            $product = 'missing - the build found no resource compiler'
+          }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          $size = '{0:N1} MB' -f ($exe.Length / 1MB)
+          "product=$($product.Trim())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sha256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "size=$size" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload the executable
+        id: upload
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.vars.outputs.dist }}
+          path: target/release/proxspace.exe
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Write the report
+        if: always()
+        shell: bash
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+          OUTCOME: ${{ steps.build.outcome }}
+          REF: ${{ steps.vars.outputs.ref }}
+          SHA8: ${{ steps.vars.outputs.sha8 }}
+          DIST: ${{ steps.vars.outputs.dist }}
+          VERSION: ${{ steps.vars.outputs.version }}
+          PRODUCT: ${{ steps.exe.outputs.product }}
+          SHA256: ${{ steps.exe.outputs.sha256 }}
+          SIZE: ${{ steps.exe.outputs.size }}
+        run: |
+          {
+            echo "<!-- proxspace-pr-build -->"
+            echo "## PR build — \`$REF\` @ \`$SHA8\`"
+            echo ""
+            if [ "$OUTCOME" = "success" ]; then
+              echo "**\`proxspace.exe\` $VERSION built.** Download it, put it in an empty"
+              echo "folder and run it: everything it creates stays in that folder, and"
+              echo "deleting the folder undoes the whole test. Downloading an artifact"
+              echo "needs you to be signed in to GitHub."
+              echo ""
+              echo "| | |"
+              echo "|---|---|"
+              echo "| Artifact | [\`$DIST\`]($RUN_URL/artifacts/$ARTIFACT_ID) — kept 14 days |"
+              echo "| Size | $SIZE |"
+              echo "| Version resource | \`$PRODUCT\` |"
+              echo "| sha256 | \`$SHA256\` |"
+              echo "| Run | [logs]($RUN_URL) |"
+              echo ""
+              echo "This build is not signed and is not a release. Windows will warn"
+              echo "about it, and \`proxspace update\` inside it still points at the"
+              echo "published releases."
+            else
+              echo "**The build failed.** No executable to try; the [run log]($RUN_URL)"
+              echo "says why."
+            fi
+            echo ""
+            echo "Checks — formatting, clippy and the tests — are reported separately by"
+            echo "the \`ci\` workflow on this pull request."
+          } > pr_report.md
+          cat pr_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      # The pull request number has to travel with the report: a workflow_run
+      # event raised by a fork's pull request carries no reference back to it.
+      - name: Save the pull request number
+        if: always() && github.event_name == 'pull_request'
+        shell: bash
+        run: echo "${{ github.event.pull_request.number }}" > pr_number.txt
+
+      # A report that fails to upload must not redden a build that succeeded;
+      # pr-comment.yml says so itself when the artifact never arrives.
+      - name: Upload the report
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-report
+          path: |
+            pr_report.md
+            pr_number.txt
+          retention-days: 1
+          if-no-files-found: error
