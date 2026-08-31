@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    branches: [main]
+    branches: [release]
   workflow_dispatch:
 
 permissions:
@@ -12,9 +12,6 @@ jobs:
   release:
     name: Release
     runs-on: windows-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      endsWith(github.event.head_commit.message, '[release]')
     steps:
       - uses: actions/checkout@v7
 
