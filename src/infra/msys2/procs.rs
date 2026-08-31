@@ -504,15 +504,24 @@ mod tests {
         let tree = dir.path().join("msys2");
         std::fs::create_dir_all(&tree).unwrap();
 
-        let mut child = Command::new("cmd.exe")
-            .args(["/c", "ping", "-n", "30", "127.0.0.1"])
+        // Started detached, through a launcher that is reaped at once, so
+        // that this test holds no handle on the process it is about to have
+        // killed. A terminated process stays in the table for as long as a
+        // handle to it is open, and a handle held here would be indisting-
+        // uishable from a process that refused to die — which is the one
+        // thing this test exists to tell apart. In the situation being
+        // modelled, ProxSpace never holds a handle on the shells it stops.
+        Command::new("cmd.exe")
+            .args(["/c", "start", "/b", "ping", "-n", "30", "127.0.0.1"])
             .current_dir(&tree)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
+            .unwrap()
+            .wait()
             .unwrap();
 
-        // The process table is not updated the instant spawn() returns.
+        // The process table is not updated the instant the launcher returns.
         let deadline = Instant::now() + Duration::from_secs(5);
         while find_holders(&tree).is_empty() && Instant::now() < deadline {
             std::thread::sleep(POLL_INTERVAL);
@@ -539,7 +548,5 @@ mod tests {
 
         assert!(stopped.stopped_anything());
         assert!(find_holders(&tree).is_empty());
-        let _ = child.kill();
-        let _ = child.wait();
     }
 }
