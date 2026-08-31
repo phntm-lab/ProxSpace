@@ -54,7 +54,7 @@ refuses to start rather than fail later in a way that is hard to diagnose.
    ```
    git clone https://github.com/RfidResearchGroup/proxmark3.git
    cd proxmark3
-   make clean && make -j
+   make clean && make all
    ```
 
 4. Run the client with `pm3`, flash with `pm3-flash-all`. Both are Proxmark3's

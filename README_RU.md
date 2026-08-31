@@ -55,7 +55,7 @@
    ```
    git clone https://github.com/RfidResearchGroup/proxmark3.git
    cd proxmark3
-   make clean && make -j
+   make clean && make all
    ```
 
 4. Клиент запускается командой `pm3`, прошивка — `pm3-flash-all`. Это
