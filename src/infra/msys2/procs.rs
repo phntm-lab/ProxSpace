@@ -25,7 +25,14 @@ use crate::ui::{Ui, UiError};
 
 /// How long to keep looking after asking the processes to die. Termination is
 /// asynchronous on Windows: the call returns before the handles are released.
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+///
+/// Generous on purpose. A process that has been killed normally leaves the
+/// table in well under a second, and the only thing a short limit buys is an
+/// earlier refusal; on a machine that is busy — a full CI runner, a build in
+/// another window, an antivirus reading the tree — that same short limit turns
+/// a process that was dying anyway into an error telling the user to close a
+/// window they have already closed.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(20);
 /// How often to look again while waiting.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
